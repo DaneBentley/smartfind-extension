@@ -1,0 +1,682 @@
+// SmartFind content script
+
+console.log('SmartFind: Content script loaded on:', window.location.href);
+
+// Global variables
+let searchBar = null;
+let searchInput = null;
+let searchResults = null;
+let currentHighlights = [];
+let currentHighlightIndex = -1;
+let totalMatches = 0;
+let isSearching = false;
+let lastQuery = '';
+
+// Listen for messages from background script
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    console.log('SmartFind: Content script received message:', request.action);
+    
+    if (request.action === "ping") {
+        sendResponse({ ready: true });
+        return;
+    }
+    
+    if (request.action === "toggleUI") {
+        try {
+            // Ensure DOM is ready before trying to create UI
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => {
+                    toggleSearchBar();
+                    sendResponse({ success: true });
+                });
+            } else {
+                toggleSearchBar();
+                sendResponse({ success: true });
+            }
+        } catch (error) {
+            console.error('SmartFind: Error in toggleUI:', error);
+            sendResponse({ success: false, error: error.message });
+        }
+        return true; // Keep the message channel open for async response
+    }
+});
+
+// Test if content script is working
+console.log('SmartFind: Content script setup complete');
+
+// Send a ready signal to background script if needed
+if (chrome.runtime && chrome.runtime.sendMessage) {
+    try {
+        chrome.runtime.sendMessage({ action: "contentScriptReady" }, (response) => {
+            // Ignore response, this is just to establish connection
+        });
+    } catch (error) {
+        // Ignore errors, this is just a courtesy signal
+    }
+}
+
+// Add a simple test function that can be called from console
+window.smartfindTest = function() {
+    console.log('SmartFind: Manual test triggered');
+    toggleSearchBar();
+};
+
+// Toggle search bar visibility
+function toggleSearchBar() {
+    console.log('SmartFind: toggleSearchBar called, searchBar exists:', !!searchBar);
+    console.log('SmartFind: document.body exists:', !!document.body);
+    console.log('SmartFind: document.readyState:', document.readyState);
+    
+    if (!searchBar) {
+        createSearchBar();
+    } else {
+        if (searchBar.classList.contains('smartfind-hidden')) {
+            console.log('SmartFind: Showing search bar');
+            searchBar.classList.remove('smartfind-hidden');
+            if (searchInput) {
+                searchInput.focus();
+            }
+        } else {
+            console.log('SmartFind: Hiding search bar');
+            hideSearchBar();
+        }
+    }
+}
+
+// Hide search bar and clear highlights
+function hideSearchBar() {
+    if (searchBar) {
+        searchBar.classList.add('smartfind-hidden');
+        clearHighlights();
+    }
+}
+
+// Create search bar UI
+function createSearchBar() {
+    console.log('SmartFind: Creating search bar');
+    
+    // Check if document.body is available
+    if (!document.body) {
+        console.error('SmartFind: document.body is not available');
+        return;
+    }
+    
+    searchBar = document.createElement('div');
+    searchBar.id = 'smartfind-search-bar';
+    searchBar.className = 'smartfind-container';
+    
+    console.log('SmartFind: Created div element:', searchBar);
+    
+    searchBar.innerHTML = `
+        <div class="smartfind-search-box">
+            <input type="text" id="smartfind-input" placeholder=" " autocomplete="off" spellcheck="false">
+            <div class="smartfind-controls">
+                <span id="smartfind-results" class="smartfind-results">0 of 0</span>
+                <button id="smartfind-prev" class="smartfind-nav-btn" title="Previous result (Shift+Enter)">↑</button>
+                <button id="smartfind-next" class="smartfind-nav-btn" title="Next result (Enter)">↓</button>
+                <button id="smartfind-close" class="smartfind-close-btn" title="Close (Escape)">×</button>
+            </div>
+        </div>
+        <div id="smartfind-status" class="smartfind-status"></div>
+    `;
+    
+    console.log('SmartFind: Set innerHTML, about to append to body');
+    
+    try {
+        document.body.appendChild(searchBar);
+        console.log('SmartFind: Search bar added to DOM successfully');
+        console.log('SmartFind: Search bar element:', searchBar);
+        console.log('SmartFind: Search bar parent:', searchBar.parentElement);
+    } catch (error) {
+        console.error('SmartFind: Error appending to body:', error);
+        return;
+    }
+    
+    // Get references to elements
+    searchInput = document.getElementById('smartfind-input');
+    searchResults = document.getElementById('smartfind-results');
+    
+    console.log('SmartFind: searchInput element:', searchInput);
+    console.log('SmartFind: searchResults element:', searchResults);
+    
+    if (!searchInput || !searchResults) {
+        console.error('SmartFind: Failed to get references to search elements');
+        console.error('SmartFind: searchInput found:', !!searchInput);
+        console.error('SmartFind: searchResults found:', !!searchResults);
+        return;
+    }
+    
+    // Add event listeners
+    setupEventListeners();
+    
+    // Show and focus the input
+    console.log('SmartFind: About to show search bar');
+    
+    if (searchInput) {
+        searchInput.focus();
+        console.log('SmartFind: Focused input element');
+    }
+    
+    console.log('SmartFind: Search bar creation complete');
+}
+
+// Setup all event listeners
+function setupEventListeners() {
+    console.log('SmartFind: Setting up event listeners');
+    
+    // Input events
+    searchInput.addEventListener('input', debounce(handleSearch, 300));
+    searchInput.addEventListener('keydown', handleKeyDown);
+    
+    // Button events
+    document.getElementById('smartfind-next').addEventListener('click', () => navigateResults(1));
+    document.getElementById('smartfind-prev').addEventListener('click', () => navigateResults(-1));
+    document.getElementById('smartfind-close').addEventListener('click', hideSearchBar);
+    
+    // Global escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && searchBar && !searchBar.classList.contains('smartfind-hidden')) {
+            hideSearchBar();
+        }
+    });
+    
+    console.log('SmartFind: Event listeners set up successfully');
+}
+
+// Handle keyboard shortcuts in search input
+function handleKeyDown(e) {
+    switch (e.key) {
+        case 'Enter':
+            e.preventDefault();
+            if (e.shiftKey) {
+                navigateResults(-1); // Previous
+            } else {
+                navigateResults(1); // Next
+            }
+            break;
+        case 'Escape':
+            hideSearchBar();
+            break;
+    }
+}
+
+// Debounce function to limit API calls
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Main search handler
+async function handleSearch() {
+    const query = searchInput.value.trim();
+    console.log('SmartFind: handleSearch called with query:', query);
+    
+    if (!query) {
+        clearHighlights();
+        updateResultsDisplay(0, 0);
+        setStatus('');
+        return;
+    }
+    
+    if (query === lastQuery) return;
+    lastQuery = query;
+    
+    setStatus('Searching...', 'loading');
+    isSearching = true;
+    
+    try {
+        // Extract page content
+        const content = extractPageContent();
+        console.log('SmartFind: Extracted content length:', content.length);
+        
+        // Send to background script for processing
+        const response = await new Promise((resolve) => {
+            chrome.runtime.sendMessage({
+                action: "performAISearch",
+                query: query,
+                content: content
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    console.error('SmartFind: Error sending message to background:', chrome.runtime.lastError);
+                    resolve({ error: chrome.runtime.lastError.message });
+                } else {
+                    resolve(response);
+                }
+            });
+        });
+        
+        console.log('SmartFind: Received response from background:', response);
+        
+        if (response.useNativeSearch) {
+            // Use native browser search
+            performNativeSearch(query);
+            if (response.aiError) {
+                setStatus('Using keyword search (AI unavailable)', 'warning');
+            } else {
+                setStatus('Keyword search', 'info');
+            }
+        } else if (response.success && response.result) {
+            // Use AI result
+            performAISearch(response.result);
+            const resultCount = Array.isArray(response.result) ? response.result.length : 1;
+            setStatus(`AI search (${resultCount} result${resultCount > 1 ? 's' : ''} found)`, 'success');
+        } else if (response.error) {
+            if (response.error.includes('Free tier limit reached') || response.error.includes('purchase more tokens')) {
+                showPaymentOption(response.error);
+            } else {
+                setStatus(response.error, 'error');
+            }
+        } else {
+            // Fallback to native search
+            performNativeSearch(query);
+            setStatus('Using keyword search', 'info');
+        }
+    } catch (error) {
+        console.error('SmartFind search error:', error);
+        performNativeSearch(query);
+        setStatus('Using keyword search (error occurred)', 'warning');
+    }
+    
+    isSearching = false;
+}
+
+// Extract readable content from the page
+function extractPageContent() {
+    // Remove script and style elements
+    const elementsToRemove = document.querySelectorAll('script, style, nav, header, footer, aside, .ad, .advertisement');
+    const tempContent = document.cloneNode(true);
+    tempContent.querySelectorAll('script, style, nav, header, footer, aside, .ad, .advertisement').forEach(el => el.remove());
+    
+    // Get text content from main content areas
+    const contentSelectors = [
+        'main', 'article', '[role="main"]', '.content', '.post', '.entry',
+        'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'td', 'div'
+    ];
+    
+    let content = '';
+    for (const selector of contentSelectors) {
+        const elements = document.querySelectorAll(selector);
+        for (const element of elements) {
+            const text = element.textContent?.trim();
+            if (text && text.length > 20 && !content.includes(text)) {
+                content += text + '\n\n';
+            }
+        }
+        if (content.length > 20000) break; // Limit content size
+    }
+    
+    return content || document.body.textContent || '';
+}
+
+// Perform native keyword search
+function performNativeSearch(query) {
+    console.log('SmartFind: Performing native search for:', query);
+    clearHighlights();
+    
+    // Use TreeWalker to find all text nodes
+    const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+        {
+            acceptNode: function(node) {
+                // Skip script and style elements
+                const parent = node.parentElement;
+                if (parent && (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        }
+    );
+    
+    const matches = [];
+    let node;
+    const regex = new RegExp(escapeRegExp(query), 'gi');
+    
+    while (node = walker.nextNode()) {
+        const text = node.textContent;
+        let match;
+        while ((match = regex.exec(text)) !== null) {
+            matches.push({
+                node: node,
+                start: match.index,
+                end: match.index + match[0].length,
+                text: match[0]
+            });
+        }
+    }
+    
+    console.log('SmartFind: Found', matches.length, 'native matches');
+    
+    // Highlight matches
+    highlightMatches(matches, 'keyword');
+    
+    if (matches.length > 0) {
+        currentHighlightIndex = 0;
+        scrollToHighlight(0);
+    }
+    
+    updateResultsDisplay(matches.length > 0 ? 1 : 0, matches.length);
+}
+
+// Perform AI-enhanced search
+function performAISearch(aiResult) {
+    console.log('SmartFind: Performing AI search with result:', aiResult);
+    clearHighlights();
+    
+    if (!aiResult) {
+        updateResultsDisplay(0, 0);
+        return;
+    }
+    
+    // Handle both single results (string) and multiple results (array)
+    const aiResults = Array.isArray(aiResult) ? aiResult : [aiResult];
+    console.log('SmartFind: Processing', aiResults.length, 'AI results:', aiResults);
+    
+    let allMatches = [];
+    
+    // Process each AI result
+    for (const result of aiResults) {
+        // Find exact matches first
+        const exactMatches = findTextInDOM(result);
+        
+        if (exactMatches.length > 0) {
+            allMatches.push(...exactMatches);
+        } else {
+            // If exact match not found, try fuzzy matching
+            const fuzzyMatches = findFuzzyMatches(result);
+            allMatches.push(...fuzzyMatches);
+        }
+    }
+    
+    // Remove duplicate matches (same position)
+    allMatches = removeDuplicateMatches(allMatches);
+    
+    // Limit the number of highlights to prevent performance issues
+    const maxHighlights = 20;
+    if (allMatches.length > maxHighlights) {
+        console.log(`SmartFind: Limiting highlights to ${maxHighlights} out of ${allMatches.length} matches`);
+        allMatches = allMatches.slice(0, maxHighlights);
+    }
+    
+    if (allMatches.length > 0) {
+        highlightMatches(allMatches, 'ai');
+        updateResultsDisplay(1, allMatches.length);
+        currentHighlightIndex = 0;
+        scrollToHighlight(0);
+    } else {
+        updateResultsDisplay(0, 0);
+    }
+}
+
+// Find exact text matches in DOM
+function findTextInDOM(searchText) {
+    const matches = [];
+    const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+        {
+            acceptNode: function(node) {
+                const parent = node.parentElement;
+                if (parent && (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        }
+    );
+    
+    let node;
+    while (node = walker.nextNode()) {
+        const text = node.textContent;
+        const index = text.toLowerCase().indexOf(searchText.toLowerCase());
+        if (index !== -1) {
+            matches.push({
+                node: node,
+                start: index,
+                end: index + searchText.length,
+                text: searchText
+            });
+        }
+    }
+    
+    return matches;
+}
+
+// Find fuzzy matches for AI results
+function findFuzzyMatches(aiResult) {
+    const words = aiResult.toLowerCase().split(/\s+/).filter(word => word.length > 3);
+    const matches = [];
+    
+    if (words.length === 0) return matches;
+    
+    const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+        {
+            acceptNode: function(node) {
+                const parent = node.parentElement;
+                if (parent && (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        }
+    );
+    
+    let node;
+    while (node = walker.nextNode()) {
+        const text = node.textContent.toLowerCase();
+        const matchedWords = words.filter(word => text.includes(word));
+        
+        // If most words match, consider it a match (stricter threshold for multiple results)
+        if (matchedWords.length >= Math.ceil(words.length * 0.7)) {
+            // Find the sentence or paragraph containing these words
+            const sentences = node.textContent.split(/[.!?]+/);
+            for (let i = 0; i < sentences.length; i++) {
+                const sentence = sentences[i].trim();
+                const sentenceLower = sentence.toLowerCase();
+                const sentenceMatches = words.filter(word => sentenceLower.includes(word));
+                
+                if (sentenceMatches.length >= Math.ceil(words.length * 0.7)) {
+                    const startIndex = node.textContent.indexOf(sentence);
+                    if (startIndex !== -1) {
+                        matches.push({
+                            node: node,
+                            start: startIndex,
+                            end: startIndex + sentence.length,
+                            text: sentence
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    return matches;
+}
+
+// Remove duplicate matches based on position
+function removeDuplicateMatches(matches) {
+    const seen = new Set();
+    return matches.filter(match => {
+        const key = `${match.node.textContent}-${match.start}-${match.end}`;
+        if (seen.has(key)) {
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
+}
+
+// Highlight matches in the DOM
+function highlightMatches(matches, searchType = 'keyword') {
+    clearHighlights();
+    
+    matches.forEach((match, index) => {
+        const range = document.createRange();
+        range.setStart(match.node, match.start);
+        range.setEnd(match.node, match.end);
+        
+        const highlight = document.createElement('span');
+        // Add different classes for different search types
+        if (searchType === 'ai') {
+            highlight.className = 'smartfind-highlight smartfind-ai-highlight smartfind-new';
+        } else {
+            highlight.className = 'smartfind-highlight smartfind-keyword-highlight smartfind-new';
+        }
+        highlight.setAttribute('data-smartfind-index', index);
+        
+        try {
+            range.surroundContents(highlight);
+            currentHighlights.push(highlight);
+            
+            // Remove the animation class after animation completes
+            setTimeout(() => {
+                highlight.classList.remove('smartfind-new');
+            }, 200);
+        } catch (e) {
+            // If surrounding fails, try a different approach
+            console.warn('Failed to highlight match:', e);
+        }
+    });
+    
+    totalMatches = currentHighlights.length;
+    console.log('SmartFind: Highlighted', totalMatches, 'matches');
+}
+
+// Clear all highlights
+function clearHighlights() {
+    currentHighlights.forEach(highlight => {
+        const parent = highlight.parentNode;
+        if (parent) {
+            parent.replaceChild(document.createTextNode(highlight.textContent), highlight);
+            parent.normalize();
+        }
+    });
+    currentHighlights = [];
+    currentHighlightIndex = -1;
+    totalMatches = 0;
+}
+
+// Navigate through search results
+function navigateResults(direction) {
+    if (totalMatches === 0) return;
+    
+    // Remove current highlight
+    if (currentHighlightIndex >= 0 && currentHighlights[currentHighlightIndex]) {
+        currentHighlights[currentHighlightIndex].classList.remove('smartfind-current');
+    }
+    
+    // Calculate new index
+    currentHighlightIndex += direction;
+    if (currentHighlightIndex >= totalMatches) {
+        currentHighlightIndex = 0;
+    } else if (currentHighlightIndex < 0) {
+        currentHighlightIndex = totalMatches - 1;
+    }
+    
+    // Highlight current match and scroll to it
+    scrollToHighlight(currentHighlightIndex);
+    updateResultsDisplay(currentHighlightIndex + 1, totalMatches);
+}
+
+// Scroll to specific highlight
+function scrollToHighlight(index) {
+    if (index >= 0 && index < currentHighlights.length) {
+        const highlight = currentHighlights[index];
+        highlight.classList.add('smartfind-current');
+        
+        // Scroll to the highlight with instant behavior for faster productivity
+        highlight.scrollIntoView({
+            behavior: 'instant',
+            block: 'center',
+            inline: 'nearest'
+        });
+    }
+}
+
+// Update results display
+function updateResultsDisplay(current, total) {
+    if (searchResults) {
+        // Show count when there are results, hide when no results
+        if (total === 0) {
+            searchResults.style.display = 'none';
+        } else {
+            searchResults.style.display = 'block';
+            if (total === 1) {
+                searchResults.textContent = '1 result';
+            } else {
+                searchResults.textContent = `${current} of ${total}`;
+            }
+        }
+    }
+}
+
+// Set status message
+function setStatus(message, type = '') {
+    const statusElement = document.getElementById('smartfind-status');
+    if (statusElement) {
+        statusElement.textContent = message;
+        statusElement.className = `smartfind-status ${type}`;
+        
+        if (message) {
+            statusElement.style.display = 'block';
+        } else {
+            statusElement.style.display = 'none';
+        }
+    }
+}
+
+// Show payment option when user hits limit
+function showPaymentOption(errorMessage) {
+    const statusElement = document.getElementById('smartfind-status');
+    if (statusElement) {
+        statusElement.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <span>${errorMessage}</span>
+                <button id="smartfind-buy-tokens" style="
+                    background: #0969da; 
+                    color: white; 
+                    border: none; 
+                    padding: 4px 8px; 
+                    border-radius: 4px; 
+                    font-size: 11px; 
+                    cursor: pointer;
+                    white-space: nowrap;
+                ">Buy 1000 tokens ($10)</button>
+            </div>
+        `;
+        statusElement.className = 'smartfind-status error';
+        statusElement.style.display = 'block';
+        
+        // Add click handler for buy button
+        const buyButton = document.getElementById('smartfind-buy-tokens');
+        if (buyButton) {
+            buyButton.addEventListener('click', handleTokenPurchase);
+        }
+    }
+}
+
+// Handle token purchase
+function handleTokenPurchase() {
+    chrome.runtime.sendMessage({ action: "purchaseTokens" }, (response) => {
+        if (response.success) {
+            setStatus('Redirecting to payment...', 'info');
+        } else {
+            setStatus(response.error || 'Payment failed', 'error');
+        }
+    });
+}
+
+// Escape special regex characters
+function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}

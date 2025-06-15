@@ -1,0 +1,5 @@
+{
+  "cerebras_api_key": "YOUR_CEREBRAS_API_KEY_HERE",
+  "stripe_publishable_key": "YOUR_STRIPE_PUBLISHABLE_KEY_HERE",
+  "payment_api_url": "https://smartfind-extension.vercel.app/api"
+} 

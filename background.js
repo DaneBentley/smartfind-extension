@@ -1,0 +1,520 @@
+// background.js
+
+// --- Globals ---
+const FREE_TIER_LIMIT = 50;
+const PAYMENT_API_URL = 'https://smartfind-extension.vercel.app/api';
+
+console.log('SmartFind: Background script loaded');
+
+// --- Action Click Listener ---
+// Listen for extension icon clicks
+chrome.action.onClicked.addListener((tab) => {
+    console.log('SmartFind: Extension icon clicked, tab:', tab.id);
+    if (tab.id) {
+        sendMessageToContentScript(tab.id, { action: "toggleUI" });
+    }
+});
+
+// --- Command Listener ---
+// Listen for the keyboard shortcut to activate the extension
+chrome.commands.onCommand.addListener((command) => {
+    console.log('SmartFind: Command received:', command);
+    if (command === "toggle-smartfind") {
+        // Send a message to the active tab's content script to toggle the search UI
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0] && tabs[0].id) {
+                console.log('SmartFind: Sending toggle message to tab:', tabs[0].id);
+                sendMessageToContentScript(tabs[0].id, { action: "toggleUI" });
+            }
+        });
+    }
+});
+
+// --- Message Listener from Content Script ---
+// Handles requests from the content script (e.g., performing an AI search)
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    console.log('SmartFind: Message received from content script:', request.action);
+    
+    if (request.action === "performAISearch") {
+        handleAISearch(request, sender, sendResponse);
+        return true; // Indicates that the response is sent asynchronously
+    } else if (request.action === "performKeywordSearch") {
+        handleKeywordSearch(request, sender, sendResponse);
+        return true;
+    } else if (request.action === "getUsage") {
+        getUsageCount(sendResponse);
+        return true;
+    } else if (request.action === "purchaseTokens") {
+        handleTokenPurchase(request, sender, sendResponse);
+        return true;
+    } else if (request.action === "getPaidTokens") {
+        getPaidTokensCount(sendResponse);
+        return true;
+    } else if (request.action === "addTokens") {
+        addPaidTokens(request.amount);
+        sendResponse({ success: true });
+        return true;
+    }
+});
+
+/**
+ * Determines if a query should use AI or keyword search
+ * @param {string} query The user's search query
+ * @returns {boolean} True if should use AI, false for keyword search
+ */
+function shouldUseAI(query) {
+    // Use AI for natural language questions and complex queries
+    const aiIndicators = [
+        // Question words
+        /^(what|where|when|why|how|who|which|can|does|is|are|will|would|should)/i,
+        // Natural language patterns
+        /\b(explain|describe|find|show|tell me|about|regarding|concerning)\b/i,
+        // Summarization and analysis intents
+        /\b(tldr|tl;dr|tl dr|summary|summarize|summarise|in a nutshell|key takeaway|key takeaways|main point|main points|gist|essence|overview|recap|brief|highlights|important|crucial|significant|notable|bottom line|core|central|primary|fundamental)\b/i,
+        // Intent phrases for summaries
+        /\b(give me the|what's the|whats the).*(summary|gist|main point|key|important|essence)\b/i,
+        // Analysis and understanding intents
+        /\b(analyze|analyse|break down|interpret|meaning|significance|implication|conclusion|insight|understanding|perspective)\b/i,
+        // Complex phrases (more than 3 words with common connecting words)
+        /\b(and|or|but|with|without|that|which|where|when)\b.*\b(and|or|but|with|without|that|which|where|when)\b/i
+    ];
+    
+    // Don't use AI for simple keyword searches
+    const keywordIndicators = [
+        // Single words or simple phrases
+        /^[\w\s]{1,15}$/,
+        // Technical terms, URLs, emails
+        /[@\.\/\\:]/,
+        // Numbers, dates, codes
+        /^\d+/,
+        // Quoted exact matches
+        /^".*"$/
+    ];
+    
+    // Check for AI indicators first
+    const hasAIIndicators = aiIndicators.some(pattern => pattern.test(query));
+    
+    // If no AI indicators, check if it's a simple keyword
+    if (!hasAIIndicators) {
+        const isSimpleKeyword = keywordIndicators.some(pattern => pattern.test(query));
+        if (isSimpleKeyword && query.split(' ').length <= 3) {
+            return false; // Use keyword search
+        }
+    }
+    
+    return hasAIIndicators || query.split(' ').length > 3;
+}
+
+/**
+ * Handles keyword search requests (fallback to native search)
+ */
+function handleKeywordSearch(request, sender, sendResponse) {
+    // For keyword searches, we let the content script handle it with native find()
+    sendResponse({ success: true, useNativeSearch: true });
+}
+
+/**
+ * Handles the AI search request from the content script.
+ * It checks usage limits before proceeding with the API call.
+ */
+async function handleAISearch(request, sender, sendResponse) {
+    console.log('SmartFind: Handling AI search for query:', request.query);
+    
+    // First check if this should actually be a keyword search
+    if (!shouldUseAI(request.query)) {
+        console.log('SmartFind: Query classified as keyword search');
+        sendResponse({ success: true, useNativeSearch: true });
+        return;
+    }
+
+    const usage = await getUsageCountPromise();
+    const paidTokens = await getPaidTokensCountPromise();
+    console.log('SmartFind: Current usage:', usage, 'Paid tokens:', paidTokens);
+
+    if (usage >= FREE_TIER_LIMIT && paidTokens <= 0) {
+        console.log('SmartFind: Free tier limit reached and no paid tokens');
+        sendResponse({ error: "Free tier limit reached. Please purchase more tokens to continue." });
+        return;
+    }
+
+    try {
+        console.log('SmartFind: Calling Cerebras API...');
+        const aiResponse = await callCerebrasAPI(request.query, request.content);
+        if (aiResponse && !aiResponse.error) {
+            // If user has exceeded free tier, use paid tokens
+            if (usage >= FREE_TIER_LIMIT) {
+                await decrementPaidTokens();
+            } else {
+                await incrementUsageCount();
+            }
+            console.log('SmartFind: AI search successful');
+            sendResponse({ success: true, result: aiResponse });
+        } else {
+            console.log('SmartFind: AI search failed, falling back to keyword search');
+            // Fallback to keyword search if AI fails
+            sendResponse({ success: true, useNativeSearch: true, aiError: aiResponse.error });
+        }
+    } catch (error) {
+        console.error("SmartFind - AI Search Error:", error);
+        // Fallback to keyword search on error
+        sendResponse({ success: true, useNativeSearch: true, aiError: error.message });
+    }
+}
+
+/**
+ * Calls the Cerebras API with llama3.1-8b model to get a semantic answer.
+ * @param {string} query The user's natural language query.
+ * @param {string} content The text content of the webpage.
+ * @returns {Promise<string>} The most relevant text snippet from the content.
+ */
+async function callCerebrasAPI(query, content) {
+    // Truncate content to avoid exceeding token limits
+    const maxContentLength = 25000; // Conservative limit for llama3.1-8b
+    const truncatedContent = content.substring(0, maxContentLength);
+
+    // Detect if this is a summarization/analysis query
+    const isSummarizationQuery = /\b(tldr|tl;dr|tl dr|summary|summarize|summarise|in a nutshell|key takeaway|key takeaways|main point|main points|gist|essence|overview|recap|brief|highlights|important|crucial|significant|notable|bottom line|core|central|primary|fundamental)\b/i.test(query) ||
+                                /\b(give me the|what's the|whats the).*(summary|gist|main point|key|important|essence)\b/i.test(query);
+    
+    const prompt = isSummarizationQuery ? 
+        `You are an intelligent search assistant. The user is asking for a summary or key information from the provided text content.
+
+**Instructions:**
+1. Read the user's query carefully to understand what type of summary they want.
+2. Thoroughly scan the provided text content.
+3. For summarization requests (TLDR, summary, key takeaways, etc.), find ALL important and relevant information that addresses their request.
+4. Return up to 5 relevant text snippets, each on a separate line, separated by "|||".
+5. Each snippet should be an exact sentence or short paragraph from the content.
+6. Order them by relevance (most relevant first).
+7. Your response format: snippet1|||snippet2|||snippet3 (etc.)
+8. If no relevant text is found, respond with "NO_MATCH_FOUND".
+
+**User Query:** "${query}"
+
+**Text Content:**
+---
+${truncatedContent}
+---
+
+**Your Response (multiple snippets separated by |||):` :
+        `You are an intelligent search assistant. Your task is to find ALL relevant sentences or short paragraphs from the provided text content that answer the user's query.
+
+**Instructions:**
+1. Read the user's query carefully.
+2. Thoroughly scan the provided text content.
+3. Identify ALL sentences or short paragraphs that are relevant to the query.
+4. Return up to 5 relevant text snippets, each on a separate line, separated by "|||".
+5. Each snippet should be an exact sentence or short paragraph from the content.
+6. Order them by relevance (most relevant first).
+7. Your response format: snippet1|||snippet2|||snippet3 (etc.)
+8. If no relevant text is found, respond with "NO_MATCH_FOUND".
+
+**User Query:** "${query}"
+
+**Text Content:**
+---
+${truncatedContent}
+---
+
+**Your Response (multiple snippets separated by |||):`;
+
+    const apiUrl = 'https://api.cerebras.ai/v1/chat/completions';
+    
+    try {
+        console.log('SmartFind: Making API request to Cerebras...');
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json'
+                // Authorization header is added automatically by rules.json
+            },
+            body: JSON.stringify({
+                model: "llama3.1-8b",
+                messages: [
+                    {
+                        role: "user",
+                        content: prompt
+                    }
+                ],
+                max_tokens: 400,
+                temperature: 0.1,
+                top_p: 0.9
+            })
+        });
+
+        console.log('SmartFind: API response status:', response.status);
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            console.error("SmartFind - Cerebras API Error:", errorBody);
+            throw new Error(`API request failed with status ${response.status}: ${errorBody}`);
+        }
+        
+        const result = await response.json();
+        console.log('SmartFind: API response received');
+
+        if (result.choices && result.choices.length > 0 && result.choices[0].message) {
+            let text = result.choices[0].message.content.trim();
+            
+            // Clean up potential formatting from the model
+            if (text.startsWith('```') && text.endsWith('```')) {
+                text = text.substring(3, text.length - 3).trim();
+            }
+            
+            // Remove quotes if the model added them
+            if ((text.startsWith('"') && text.endsWith('"')) || 
+                (text.startsWith("'") && text.endsWith("'"))) {
+                text = text.substring(1, text.length - 1);
+            }
+            
+            if (text === "NO_MATCH_FOUND") {
+                return null;
+            }
+            
+            // Parse multiple results separated by |||
+            const results = text.split('|||')
+                .map(snippet => snippet.trim())
+                .filter(snippet => snippet.length > 0 && snippet !== "NO_MATCH_FOUND");
+            
+            // Return array of results if multiple, single result if one, null if none
+            return results.length > 0 ? results : null;
+        } else {
+            console.error("SmartFind - Unexpected API response structure:", result);
+            return null;
+        }
+
+    } catch (error) {
+        console.error("SmartFind - Error calling Cerebras API:", error);
+        return { error: error.message };
+    }
+}
+
+// --- Usage Tracking ---
+
+/**
+ * Gets the current API usage count from chrome.storage.
+ */
+function getUsageCount(callback) {
+    chrome.storage.local.get(['aiUsageCount'], (result) => {
+        callback(result.aiUsageCount || 0);
+    });
+}
+
+/**
+ * Promise-based version of getUsageCount.
+ */
+function getUsageCountPromise() {
+    return new Promise(resolve => {
+        chrome.storage.local.get(['aiUsageCount'], (result) => {
+            resolve(result.aiUsageCount || 0);
+        });
+    });
+}
+
+/**
+ * Increments the API usage count in chrome.storage.
+ */
+async function incrementUsageCount() {
+    let { aiUsageCount } = await chrome.storage.local.get('aiUsageCount');
+    aiUsageCount = (aiUsageCount || 0) + 1;
+    await chrome.storage.local.set({ aiUsageCount });
+}
+
+// --- Paid Tokens Management ---
+
+/**
+ * Gets the current paid tokens count from chrome.storage.
+ */
+function getPaidTokensCount(callback) {
+    chrome.storage.local.get(['paidTokens'], (result) => {
+        callback(result.paidTokens || 0);
+    });
+}
+
+/**
+ * Promise-based version of getPaidTokensCount.
+ */
+function getPaidTokensCountPromise() {
+    return new Promise(resolve => {
+        chrome.storage.local.get(['paidTokens'], (result) => {
+            resolve(result.paidTokens || 0);
+        });
+    });
+}
+
+/**
+ * Decrements the paid tokens count in chrome.storage.
+ */
+async function decrementPaidTokens() {
+    let { paidTokens } = await chrome.storage.local.get('paidTokens');
+    paidTokens = Math.max((paidTokens || 0) - 1, 0);
+    await chrome.storage.local.set({ paidTokens });
+}
+
+/**
+ * Adds paid tokens to the user's account.
+ */
+async function addPaidTokens(amount) {
+    let { paidTokens } = await chrome.storage.local.get('paidTokens');
+    paidTokens = (paidTokens || 0) + amount;
+    await chrome.storage.local.set({ paidTokens });
+}
+
+/**
+ * Handles token purchase requests.
+ */
+async function handleTokenPurchase(request, sender, sendResponse) {
+    try {
+        // Generate a unique user ID if not exists
+        let { userId } = await chrome.storage.local.get('userId');
+        if (!userId) {
+            userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            await chrome.storage.local.set({ userId });
+        }
+
+        // Call your payment API
+        const response = await fetch(`${PAYMENT_API_URL}/purchase-tokens`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ userId })
+        });
+
+        const result = await response.json();
+        
+        if (result.sessionId) {
+            // Redirect to Stripe checkout
+            chrome.tabs.create({ url: `https://checkout.stripe.com/pay/${result.sessionId}` });
+            sendResponse({ success: true, message: "Redirecting to payment..." });
+        } else {
+            sendResponse({ error: "Failed to create payment session" });
+        }
+    } catch (error) {
+        console.error('Token purchase error:', error);
+        sendResponse({ error: "Payment system temporarily unavailable" });
+    }
+}
+
+/**
+ * Sends a message to content script with improved error handling
+ * @param {number} tabId - The tab ID to send the message to
+ * @param {object} message - The message to send
+ */
+async function sendMessageToContentScript(tabId, message) {
+    try {
+        // First check if the tab is valid and accessible
+        const tab = await chrome.tabs.get(tabId);
+        
+        // Check if the URL is restricted
+        if (isRestrictedUrl(tab.url)) {
+            console.warn('SmartFind: Cannot inject into restricted URL:', tab.url);
+            // Optionally show a notification to the user
+            chrome.action.setBadgeText({ text: '!', tabId: tabId });
+            chrome.action.setBadgeBackgroundColor({ color: '#ff4444', tabId: tabId });
+            setTimeout(() => {
+                chrome.action.setBadgeText({ text: '', tabId: tabId });
+            }, 3000);
+            return;
+        }
+
+        // First ping to check if content script is ready
+        chrome.tabs.sendMessage(tabId, { action: "ping" }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.warn('SmartFind: Content script not ready, attempting to inject...', chrome.runtime.lastError.message);
+                // Try to inject the content script if it's not loaded
+                injectContentScriptAndRetry(tabId, message);
+            } else if (response && response.ready) {
+                console.log('SmartFind: Content script is ready, sending message');
+                // Content script is ready, send the actual message
+                chrome.tabs.sendMessage(tabId, message, (response) => {
+                    if (chrome.runtime.lastError) {
+                        console.error('SmartFind: Error sending message to ready content script:', chrome.runtime.lastError.message);
+                    } else {
+                        console.log('SmartFind: Message sent successfully to content script');
+                        // Clear any error badge
+                        chrome.action.setBadgeText({ text: '', tabId: tabId });
+                    }
+                });
+            } else {
+                console.warn('SmartFind: Content script ping failed, attempting injection');
+                injectContentScriptAndRetry(tabId, message);
+            }
+        });
+    } catch (error) {
+        console.error('SmartFind: Error getting tab info:', error);
+    }
+}
+
+/**
+ * Checks if a URL is restricted for content script injection
+ * @param {string} url - The URL to check
+ * @returns {boolean} - True if the URL is restricted
+ */
+function isRestrictedUrl(url) {
+    const restrictedPatterns = [
+        /^chrome:\/\//,
+        /^chrome-extension:\/\//,
+        /^moz-extension:\/\//,
+        /^edge-extension:\/\//,
+        /^about:/,
+        /^file:\/\//,
+        /^data:/,
+        /^blob:/
+    ];
+    
+    return restrictedPatterns.some(pattern => pattern.test(url));
+}
+
+/**
+ * Attempts to inject content script and retry sending the message
+ * @param {number} tabId - The tab ID
+ * @param {object} message - The message to send after injection
+ */
+async function injectContentScriptAndRetry(tabId, message) {
+    try {
+        // Inject the content script
+        await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            files: ['content.js']
+        });
+        
+        // Inject the CSS
+        await chrome.scripting.insertCSS({
+            target: { tabId: tabId },
+            files: ['styles.css']
+        });
+        
+        console.log('SmartFind: Content script injected successfully');
+        
+        // Wait a moment for the script to initialize, then retry
+        setTimeout(() => {
+            chrome.tabs.sendMessage(tabId, message, (response) => {
+                if (chrome.runtime.lastError) {
+                    console.error('SmartFind: Failed to send message after injection:', chrome.runtime.lastError.message);
+                    // Try one more time with a longer delay
+                    setTimeout(() => {
+                        chrome.tabs.sendMessage(tabId, message, (response) => {
+                            if (chrome.runtime.lastError) {
+                                console.error('SmartFind: Final attempt failed:', chrome.runtime.lastError.message);
+                            } else {
+                                console.log('SmartFind: Message sent successfully on final attempt');
+                            }
+                        });
+                    }, 500);
+                } else {
+                    console.log('SmartFind: Message sent successfully after injection');
+                }
+            });
+        }, 200);
+        
+    } catch (injectionError) {
+        console.error('SmartFind: Failed to inject content script:', injectionError);
+        // Show error badge
+        chrome.action.setBadgeText({ text: '✗', tabId: tabId });
+        chrome.action.setBadgeBackgroundColor({ color: '#ff4444', tabId: tabId });
+        setTimeout(() => {
+            chrome.action.setBadgeText({ text: '', tabId: tabId });
+        }, 3000);
+    }
+}

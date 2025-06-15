@@ -1,0 +1,378 @@
+/* SmartFind Extension Styles */
+
+/* --- Main Container --- */
+.smartfind-container {
+    position: fixed !important;
+    top: 12px !important;
+    right: 12px !important;
+    z-index: 2147483647 !important;
+    background-color: rgba(255, 255, 255, 0.98) !important;
+    border: none !important;
+    border-radius: 12px !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    font-size: 13px !important;
+    line-height: 1.4 !important;
+    color: #24292f !important;
+    width: 320px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    backdrop-filter: blur(8px) !important;
+}
+
+.smartfind-container.smartfind-hidden {
+    display: none !important;
+}
+
+/* --- Search Box --- */
+.smartfind-search-box {
+    display: flex !important;
+    align-items: center !important;
+    padding: 8px !important;
+    background: transparent !important;
+    gap: 6px !important;
+}
+
+/* --- Input Field --- */
+#smartfind-input {
+    flex: 1 !important;
+    border: none !important;
+    outline: none !important;
+    background: transparent !important;
+    font-size: 14px !important;
+    font-weight: 400 !important;
+    color: #24292f !important;
+    font-family: inherit !important;
+    padding: 6px 8px !important;
+    margin: 0 !important;
+    line-height: 1.4 !important;
+    border-radius: 8px !important;
+    min-width: 0 !important;
+    transition: background-color 0.15s ease !important;
+}
+
+#smartfind-input::placeholder {
+    color: #8b949e !important;
+    font-weight: 400 !important;
+}
+
+#smartfind-input:focus {
+    background: rgba(0, 0, 0, 0.03) !important;
+}
+
+/* --- Controls --- */
+.smartfind-controls {
+    display: flex !important;
+    align-items: center !important;
+    gap: 2px !important;
+    flex-shrink: 0 !important;
+}
+
+.smartfind-results {
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: #8b949e !important;
+    user-select: none !important;
+    white-space: nowrap !important;
+    padding: 4px 8px !important;
+    background: transparent !important;
+    border-radius: 6px !important;
+    min-width: 45px !important;
+    text-align: center !important;
+    border: none !important;
+    transition: all 0.15s ease !important;
+}
+
+/* Hide results counter smoothly when not needed */
+.smartfind-results[style*="display: none"] {
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    opacity: 0 !important;
+}
+
+.smartfind-nav-btn,
+.smartfind-close-btn {
+    border: none !important;
+    background: transparent !important;
+    cursor: pointer !important;
+    font-size: 14px !important;
+    color: #8b949e !important;
+    padding: 4px !important;
+    border-radius: 6px !important;
+    transition: all 0.15s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-width: 28px !important;
+    height: 28px !important;
+    font-weight: 400 !important;
+    line-height: 1 !important;
+}
+
+.smartfind-nav-btn:hover,
+.smartfind-close-btn:hover {
+    background: rgba(0, 0, 0, 0.05) !important;
+    color: #24292f !important;
+}
+
+.smartfind-nav-btn:active,
+.smartfind-close-btn:active {
+    background: rgba(0, 0, 0, 0.08) !important;
+    transform: translateY(0.5px) !important;
+}
+
+.smartfind-close-btn {
+    font-size: 14px !important;
+    font-weight: 400 !important;
+    color: #656d76 !important;
+}
+
+.smartfind-close-btn:hover {
+    background: #ffeaea !important;
+    border-color: #f5c2c7 !important;
+    color: #d1242f !important;
+}
+
+/* --- Status Bar --- */
+.smartfind-status {
+    display: none !important;
+    padding: 6px 8px !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    background: transparent !important;
+    border-top: 1px solid rgba(0, 0, 0, 0.06) !important;
+    margin: 0 !important;
+}
+
+.smartfind-status.loading {
+    color: #0969da !important;
+    display: block !important;
+}
+
+.smartfind-status.success {
+    color: #1a7f37 !important;
+    display: block !important;
+}
+
+.smartfind-status.info {
+    color: #656d76 !important;
+    display: block !important;
+}
+
+.smartfind-status.warning {
+    color: #9a6700 !important;
+    display: block !important;
+}
+
+.smartfind-status.error {
+    color: #cf222e !important;
+    display: block !important;
+}
+
+/* --- Highlight Styles --- */
+.smartfind-highlight {
+    border-radius: 8px !important;
+    padding: 1px 3px !important;
+    margin: 0 -1px !important;
+    box-decoration-break: clone !important;
+    -webkit-box-decoration-break: clone !important;
+    transition: all 0.1s ease !important;
+    position: relative !important;
+    z-index: 999999 !important;
+    display: inline !important;
+    font-weight: inherit !important;
+    font-style: inherit !important;
+    text-decoration: inherit !important;
+    line-height: inherit !important;
+    font-size: inherit !important;
+    font-family: inherit !important;
+    border: none !important;
+}
+
+/* Keyword search highlights - yellow */
+.smartfind-keyword-highlight {
+    background-color: rgba(255, 235, 59, 0.3) !important;
+    color: inherit !important;
+    box-shadow: 0 0 0 1px rgba(255, 235, 59, 0.4) !important;
+}
+
+/* AI search highlights - blue */
+.smartfind-ai-highlight {
+    background-color: rgba(33, 150, 243, 0.3) !important;
+    color: inherit !important;
+    box-shadow: 0 0 0 1px rgba(33, 150, 243, 0.4) !important;
+}
+
+/* Current highlight - more prominent */
+.smartfind-highlight.smartfind-current {
+    z-index: 1000000 !important;
+}
+
+/* Current keyword highlight */
+.smartfind-keyword-highlight.smartfind-current {
+    background-color: rgba(255, 235, 59, 0.5) !important;
+    box-shadow: 0 0 0 2px rgba(255, 235, 59, 0.6) !important;
+}
+
+/* Current AI highlight */
+.smartfind-ai-highlight.smartfind-current {
+    background-color: rgba(33, 150, 243, 0.5) !important;
+    box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.6) !important;
+}
+
+/* --- Animation for smooth highlighting --- */
+@keyframes smartfind-highlight-appear {
+    0% { 
+        opacity: 0;
+    }
+    100% { 
+        opacity: 1;
+    }
+}
+
+.smartfind-highlight.smartfind-new {
+    animation: smartfind-highlight-appear 0.15s ease-out !important;
+}
+
+/* --- Responsive adjustments --- */
+@media (max-width: 480px) {
+    .smartfind-container {
+        right: 10px !important;
+        left: 10px !important;
+        width: auto !important;
+        top: 10px !important;
+    }
+    
+    .smartfind-search-box {
+        padding: 8px 10px !important;
+    }
+    
+    #smartfind-input {
+        font-size: 16px !important; /* Prevent zoom on iOS */
+        padding: 8px 10px !important;
+    }
+    
+    .smartfind-controls {
+        gap: 4px !important;
+    }
+    
+    .smartfind-nav-btn,
+    .smartfind-close-btn {
+        min-width: 32px !important;
+        height: 32px !important;
+        padding: 8px !important;
+    }
+}
+
+/* --- Dark mode support --- */
+@media (prefers-color-scheme: dark) {
+    .smartfind-container {
+        background-color: rgba(22, 27, 34, 0.98) !important;
+        color: #e6edf3 !important;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2) !important;
+    }
+    
+    #smartfind-input {
+        background: transparent !important;
+        color: #e6edf3 !important;
+    }
+    
+    #smartfind-input::placeholder {
+        color: #7d8590 !important;
+    }
+    
+    #smartfind-input:focus {
+        background: rgba(255, 255, 255, 0.03) !important;
+    }
+    
+    .smartfind-nav-btn,
+    .smartfind-close-btn {
+        color: #7d8590 !important;
+    }
+    
+    .smartfind-nav-btn:hover,
+    .smartfind-close-btn:hover {
+        background: rgba(255, 255, 255, 0.05) !important;
+        color: #e6edf3 !important;
+    }
+    
+    .smartfind-nav-btn:active,
+    .smartfind-close-btn:active {
+        background: rgba(255, 255, 255, 0.08) !important;
+    }
+    
+    .smartfind-status {
+        border-top-color: rgba(255, 255, 255, 0.06) !important;
+    }
+    
+    .smartfind-status.loading {
+        color: #58a6ff !important;
+    }
+    
+    .smartfind-status.success {
+        color: #3fb950 !important;
+    }
+    
+    .smartfind-status.info {
+        color: #7d8590 !important;
+    }
+    
+    .smartfind-status.warning {
+        color: #d29922 !important;
+    }
+    
+    .smartfind-status.error {
+        color: #f85149 !important;
+    }
+    
+    /* Keyword search highlights - warmer yellow for dark mode */
+    .smartfind-keyword-highlight {
+        background-color: rgba(255, 213, 79, 0.25) !important;
+        box-shadow: 0 0 0 1px rgba(255, 213, 79, 0.35) !important;
+    }
+    
+    /* AI search highlights - lighter blue for dark mode */
+    .smartfind-ai-highlight {
+        background-color: rgba(100, 181, 246, 0.25) !important;
+        box-shadow: 0 0 0 1px rgba(100, 181, 246, 0.35) !important;
+    }
+    
+    /* Current keyword highlight in dark mode */
+    .smartfind-keyword-highlight.smartfind-current {
+        background-color: rgba(255, 213, 79, 0.4) !important;
+        box-shadow: 0 0 0 2px rgba(255, 213, 79, 0.5) !important;
+    }
+    
+    /* Current AI highlight in dark mode */
+    .smartfind-ai-highlight.smartfind-current {
+        background-color: rgba(100, 181, 246, 0.4) !important;
+        box-shadow: 0 0 0 2px rgba(100, 181, 246, 0.5) !important;
+    }
+}
+
+/* --- Ensure extension styles don't interfere with page --- */
+.smartfind-container * {
+    box-sizing: border-box !important;
+}
+
+.smartfind-container input,
+.smartfind-container button {
+    font-family: inherit !important;
+}
+
+/* --- Hide from print --- */
+@media print {
+    .smartfind-container {
+        display: none !important;
+    }
+    
+    .smartfind-highlight {
+        background: transparent !important;
+        color: inherit !important;
+        box-shadow: none !important;
+    }
+} 

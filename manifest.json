@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "SmartFind: AI-Enhanced Search",
+  "version": "1.0",
+  "description": "Search web pages using natural language questions. Use Ctrl+Shift+F to start.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "https://api.cerebras.ai/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "SmartFind: AI-Enhanced Search",
+    "default_popup": ""
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "commands": {
+    "toggle-smartfind": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+F",
+        "mac": "Ctrl+Shift+F",
+        "windows": "Ctrl+Shift+F",
+        "linux": "Ctrl+Shift+F"
+      },
+      "description": "Toggle the SmartFind search bar"
+    }
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  }
+}
