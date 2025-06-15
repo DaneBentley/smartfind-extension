@@ -675,22 +675,101 @@ function showPaymentOption(errorMessage) {
 
 // Handle token purchase
 function handleTokenPurchase() {
-    // First try the payment system
-    chrome.runtime.sendMessage({ action: "purchaseTokens" }, (response) => {
-        if (response.success) {
-            setStatus('Redirecting to payment...', 'info');
-        } else {
-            // If payment system fails, offer test tokens for development
-            setStatus('Payment system unavailable. Adding test tokens...', 'warning');
-            chrome.runtime.sendMessage({ action: "addTestTokens" }, (testResponse) => {
-                if (testResponse.success) {
-                    setStatus('Added 1000 test tokens for development', 'success');
+    // First check if user is authenticated
+    chrome.storage.local.get(['authToken', 'currentUser'], (result) => {
+        if (result.authToken && result.currentUser) {
+            // User is authenticated, proceed with purchase
+            chrome.runtime.sendMessage({ action: "purchaseTokens" }, (response) => {
+                if (response.success) {
+                    setStatus('Redirecting to payment...', 'info');
                 } else {
-                    setStatus(response.error || 'Payment failed', 'error');
+                    // If payment system fails, offer test tokens for development
+                    setStatus('Payment system unavailable. Adding test tokens...', 'warning');
+                    chrome.runtime.sendMessage({ action: "addTestTokens" }, (testResponse) => {
+                        if (testResponse.success) {
+                            setStatus('Added 1000 test tokens for development', 'success');
+                        } else {
+                            setStatus(response.error || 'Payment failed', 'error');
+                        }
+                    });
                 }
             });
+        } else {
+            // User is not authenticated, prompt to sign in
+            showSignInPrompt();
         }
     });
+}
+
+// Show sign-in prompt for token purchase
+function showSignInPrompt() {
+    const statusElement = document.getElementById('smartfind-status');
+    if (statusElement) {
+        statusElement.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span>Sign in to sync your purchase across devices</span>
+                    <button id="smartfind-open-popup" style="
+                        background: #0969da; 
+                        color: white; 
+                        border: none; 
+                        padding: 4px 8px; 
+                        border-radius: 4px; 
+                        font-size: 11px; 
+                        cursor: pointer;
+                        white-space: nowrap;
+                    ">Sign In</button>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span style="font-size: 11px; color: #656d76;">Or continue without account:</span>
+                    <button id="smartfind-buy-anonymous" style="
+                        background: #6f42c1; 
+                        color: white; 
+                        border: none; 
+                        padding: 4px 8px; 
+                        border-radius: 4px; 
+                        font-size: 11px; 
+                        cursor: pointer;
+                        white-space: nowrap;
+                    ">Buy Tokens ($10)</button>
+                </div>
+            </div>
+        `;
+        statusElement.className = 'smartfind-status info';
+        statusElement.style.display = 'block';
+        
+        // Add click handler for sign-in button
+        const signInButton = document.getElementById('smartfind-open-popup');
+        if (signInButton) {
+            signInButton.addEventListener('click', () => {
+                // Open the extension popup by sending a message to background script
+                chrome.runtime.sendMessage({ action: "openPopup" });
+                setStatus('Click the SmartFind extension icon to sign in', 'info');
+            });
+        }
+        
+        // Add click handler for anonymous purchase
+        const anonymousButton = document.getElementById('smartfind-buy-anonymous');
+        if (anonymousButton) {
+            anonymousButton.addEventListener('click', () => {
+                // Proceed with anonymous purchase
+                chrome.runtime.sendMessage({ action: "purchaseTokens" }, (response) => {
+                    if (response.success) {
+                        setStatus('Redirecting to payment...', 'info');
+                    } else {
+                        setStatus('Payment system unavailable. Adding test tokens...', 'warning');
+                        chrome.runtime.sendMessage({ action: "addTestTokens" }, (testResponse) => {
+                            if (testResponse.success) {
+                                setStatus('Added 1000 test tokens for development', 'success');
+                            } else {
+                                setStatus(response.error || 'Payment failed', 'error');
+                            }
+                        });
+                    }
+                });
+            });
+        }
+    }
 }
 
 // Escape special regex characters

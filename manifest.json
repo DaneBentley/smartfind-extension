@@ -15,7 +15,7 @@
     "https://*.supabase.co/*"
   ],
   "oauth2": {
-    "client_id": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
+    "client_id": "148916188620-nln6nq5kn23hm435g0i7mrs72becjqb2.apps.googleusercontent.com",
     "scopes": ["email", "profile"]
   },
   "background": {
@@ -23,7 +23,7 @@
   },
   "action": {
     "default_title": "SmartFind: AI-Enhanced Search",
-    "default_popup": ""
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {

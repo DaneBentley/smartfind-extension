@@ -101,6 +101,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else if (request.action === "getAuthStatus") {
         handleGetAuthStatus(request, sender, sendResponse);
         return true;
+    } else if (request.action === "openPopup") {
+        handleOpenPopup(request, sender, sendResponse);
+        return true;
     }
 });
 
@@ -612,13 +615,19 @@ async function handleGoogleSignIn(request, sender, sendResponse) {
         });
 
         // Get user info from Google
+        console.log('SmartFind: Fetching Google user info...');
         const userInfoResponse = await fetch(`https://www.googleapis.com/oauth2/v1/userinfo?access_token=${token}`);
         if (!userInfoResponse.ok) {
-            throw new Error('Failed to fetch Google user info');
+            const errorText = await userInfoResponse.text();
+            console.error('Google user info error:', errorText);
+            throw new Error(`Failed to fetch Google user info: ${userInfoResponse.status} ${userInfoResponse.statusText}`);
         }
         const userInfo = await userInfoResponse.json();
+        console.log('SmartFind: Google user info received:', userInfo.email);
         
         // Authenticate with our backend
+        console.log('SmartFind: Authenticating with backend...');
+        console.log('SmartFind: Backend URL:', `${PAYMENT_API_URL}/auth/oauth`);
         const authResponse = await fetch(`${PAYMENT_API_URL}/auth/oauth`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -631,9 +640,24 @@ async function handleGoogleSignIn(request, sender, sendResponse) {
             })
         });
 
-        const authResult = await authResponse.json();
+        console.log('SmartFind: Backend response status:', authResponse.status);
+        
         if (!authResponse.ok) {
-            throw new Error(authResult.error || 'Backend authentication failed');
+            const errorText = await authResponse.text();
+            console.error('Backend auth error response:', errorText);
+            throw new Error(`Backend authentication failed: ${authResponse.status} ${authResponse.statusText}`);
+        }
+
+        let authResult;
+        try {
+            const responseText = await authResponse.text();
+            console.log('SmartFind: Raw backend response:', responseText.substring(0, 200));
+            authResult = JSON.parse(responseText);
+            console.log('SmartFind: Backend authentication successful');
+        } catch (jsonError) {
+            console.error('SmartFind: Failed to parse JSON response:', jsonError.message);
+            console.error('SmartFind: Raw response that failed to parse:', responseText);
+            throw new Error(`Backend returned invalid JSON: ${jsonError.message}`);
         }
 
         // Save auth state
@@ -660,16 +684,23 @@ async function handleEmailSignIn(request, sender, sendResponse) {
     try {
         const { email, password } = request;
         
+        console.log('SmartFind: Email sign-in request to:', `${PAYMENT_API_URL}/auth/signin`);
         const response = await fetch(`${PAYMENT_API_URL}/auth/signin`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
         });
 
-        const result = await response.json();
+        console.log('SmartFind: Email sign-in response status:', response.status);
+        
         if (!response.ok) {
-            throw new Error(result.error || 'Sign in failed');
+            const errorText = await response.text();
+            console.error('Email sign-in error response:', errorText);
+            throw new Error(`Sign in failed: ${response.status} ${response.statusText}`);
         }
+
+        const result = await response.json();
+        console.log('SmartFind: Email sign-in successful');
 
         // Save auth state
         await chrome.storage.local.set({
@@ -695,16 +726,23 @@ async function handleEmailSignUp(request, sender, sendResponse) {
     try {
         const { email, password, name } = request;
         
+        console.log('SmartFind: Email sign-up request to:', `${PAYMENT_API_URL}/auth/signup`);
         const response = await fetch(`${PAYMENT_API_URL}/auth/signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, name })
         });
 
-        const result = await response.json();
+        console.log('SmartFind: Email sign-up response status:', response.status);
+        
         if (!response.ok) {
-            throw new Error(result.error || 'Sign up failed');
+            const errorText = await response.text();
+            console.error('Email sign-up error response:', errorText);
+            throw new Error(`Sign up failed: ${response.status} ${response.statusText}`);
         }
+
+        const result = await response.json();
+        console.log('SmartFind: Email sign-up successful');
 
         // Save auth state
         await chrome.storage.local.set({
@@ -872,4 +910,19 @@ async function syncUserDataInternal() {
         console.error('Internal sync error:', error);
     }
     return null;
+}
+
+/**
+ * Handle opening the extension popup
+ */
+async function handleOpenPopup(request, sender, sendResponse) {
+    try {
+        // Note: chrome.action.openPopup() is not available in Manifest V3
+        // The popup will open when user clicks the extension icon
+        // This handler just acknowledges the request
+        sendResponse({ success: true, message: 'Please click the SmartFind extension icon to open the popup' });
+    } catch (error) {
+        console.error('Open popup error:', error);
+        sendResponse({ success: false, error: error.message });
+    }
 }
