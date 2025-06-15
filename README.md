@@ -4,28 +4,42 @@ A Chrome extension that provides intelligent search capabilities using AI.
 
 ## Setup Instructions
 
-### 1. Configure API Keys
+### 1. Set Up Vercel Backend
 
-1. Copy `config.example.json` to `config.json`:
+1. Install Vercel CLI if you haven't already:
    ```bash
-   cp config.example.json config.json
+   npm i -g vercel
    ```
 
-2. Edit `config.json` and replace the placeholder values with your actual API keys:
-   - `cerebras_api_key`: Your Cerebras AI API key
-   - `stripe_publishable_key`: Your Stripe publishable key (for payments)
-   - `payment_api_url`: Your payment API endpoint
+2. Set up your environment variables in `.env.local`:
+   ```bash
+   CEREBRAS_API_KEY=your_actual_cerebras_api_key_here
+   ```
 
-3. Update `rules.json` with your Cerebras API key:
-   - Replace `YOUR_CEREBRAS_API_KEY_HERE` with your actual API key
+3. Deploy to Vercel or run locally:
+   ```bash
+   # For local development
+   vercel dev
+   
+   # For deployment
+   vercel
+   ```
 
-### 2. Install the Extension
+4. Set the environment variable in your Vercel dashboard:
+   - Go to your Vercel project settings
+   - Add `CEREBRAS_API_KEY` with your actual API key
+
+### 2. Configure Extension
+
+The extension now uses your Vercel backend as a proxy, so no API keys need to be stored in the extension files.
+
+### 3. Install the Extension
 
 1. Open Chrome and go to `chrome://extensions/`
 2. Enable "Developer mode" in the top right
 3. Click "Load unpacked" and select this directory
 
-### 3. Usage
+### 4. Usage
 
 - Click the extension icon or use the keyboard shortcut to activate
 - Type your search query in natural language
@@ -33,9 +47,10 @@ A Chrome extension that provides intelligent search capabilities using AI.
 
 ## Security Notes
 
-- **Never commit `config.json` or `rules.json` with real API keys to version control**
+- **Never commit `.env` or `.env.local` files with real API keys to version control**
 - The `.gitignore` file is configured to exclude sensitive files
-- Always use environment variables in production deployments
+- API keys are stored securely in Vercel environment variables
+- The extension uses a secure proxy pattern to avoid exposing API keys in client code
 
 ## Development
 

@@ -2,7 +2,15 @@
 
 // --- Globals ---
 const FREE_TIER_LIMIT = 50;
-const PAYMENT_API_URL = 'https://smartfind-extension.vercel.app/api';
+// Use stable Vercel alias that won't change
+const API_BASE_URL = 'https://smartfind-extension-ffbscu551.vercel.app';
+const PAYMENT_API_URL = `${API_BASE_URL}/api`;
+
+// Whitelist of user IDs that get unlimited free usage
+const UNLIMITED_FREE_USERS = [
+    // Add your personal user IDs here
+    // 'user_1234567890_abcdef123',  // Example format
+];
 
 console.log('SmartFind: Background script loaded');
 
@@ -53,6 +61,45 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else if (request.action === "addTokens") {
         addPaidTokens(request.amount);
         sendResponse({ success: true });
+        return true;
+    } else if (request.action === "addTestTokens") {
+        // Temporary development/testing function
+        (async () => {
+            await addPaidTokens(1000);
+            sendResponse({ success: true, message: "Added 1000 test tokens" });
+        })();
+        return true;
+    } else if (request.action === "getMyUserId") {
+        // Helper to get current user ID for whitelist
+        (async () => {
+            let { userId } = await chrome.storage.local.get('userId');
+            if (!userId) {
+                userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                await chrome.storage.local.set({ userId });
+            }
+            sendResponse({ userId: userId, isUnlimitedFree: UNLIMITED_FREE_USERS.includes(userId) });
+        })();
+        return true;
+    } else if (request.action === "signInWithGoogle") {
+        handleGoogleSignIn(request, sender, sendResponse);
+        return true;
+    } else if (request.action === "signInWithEmail") {
+        handleEmailSignIn(request, sender, sendResponse);
+        return true;
+    } else if (request.action === "signUpWithEmail") {
+        handleEmailSignUp(request, sender, sendResponse);
+        return true;
+    } else if (request.action === "signOut") {
+        handleSignOut(request, sender, sendResponse);
+        return true;
+    } else if (request.action === "syncUserData") {
+        handleSyncUserData(request, sender, sendResponse);
+        return true;
+    } else if (request.action === "restorePurchases") {
+        handleRestorePurchases(request, sender, sendResponse);
+        return true;
+    } else if (request.action === "getAuthStatus") {
+        handleGetAuthStatus(request, sender, sendResponse);
         return true;
     }
 });
@@ -129,9 +176,14 @@ async function handleAISearch(request, sender, sendResponse) {
 
     const usage = await getUsageCountPromise();
     const paidTokens = await getPaidTokensCountPromise();
-    console.log('SmartFind: Current usage:', usage, 'Paid tokens:', paidTokens);
+    
+    // Check if user is on unlimited free list
+    let { userId } = await chrome.storage.local.get('userId');
+    const isUnlimitedFree = userId && UNLIMITED_FREE_USERS.includes(userId);
+    
+    console.log('SmartFind: Current usage:', usage, 'Paid tokens:', paidTokens, 'Unlimited free:', isUnlimitedFree);
 
-    if (usage >= FREE_TIER_LIMIT && paidTokens <= 0) {
+    if (!isUnlimitedFree && usage >= FREE_TIER_LIMIT && paidTokens <= 0) {
         console.log('SmartFind: Free tier limit reached and no paid tokens');
         sendResponse({ error: "Free tier limit reached. Please purchase more tokens to continue." });
         return;
@@ -141,8 +193,8 @@ async function handleAISearch(request, sender, sendResponse) {
         console.log('SmartFind: Calling Cerebras API...');
         const aiResponse = await callCerebrasAPI(request.query, request.content);
         if (aiResponse && !aiResponse.error) {
-            // If user has exceeded free tier, use paid tokens
-            if (usage >= FREE_TIER_LIMIT) {
+            // If user has exceeded free tier, use paid tokens (unless unlimited free)
+            if (!isUnlimitedFree && usage >= FREE_TIER_LIMIT) {
                 await decrementPaidTokens();
             } else {
                 await incrementUsageCount();
@@ -218,15 +270,14 @@ ${truncatedContent}
 
 **Your Response (multiple snippets separated by |||):`;
 
-    const apiUrl = 'https://api.cerebras.ai/v1/chat/completions';
+    const apiUrl = `${API_BASE_URL}/api/cerebras`;
     
     try {
-        console.log('SmartFind: Making API request to Cerebras...');
+        console.log('SmartFind: Making API request via proxy...');
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json'
-                // Authorization header is added automatically by rules.json
             },
             body: JSON.stringify({
                 model: "llama3.1-8b",
@@ -372,27 +423,49 @@ async function handleTokenPurchase(request, sender, sendResponse) {
             await chrome.storage.local.set({ userId });
         }
 
+        // Get auth token if available
+        const { authToken } = await chrome.storage.local.get('authToken');
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        
+        if (authToken) {
+            headers['Authorization'] = `Bearer ${authToken}`;
+        }
+
         // Call your payment API
         const response = await fetch(`${PAYMENT_API_URL}/purchase-tokens`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers,
             body: JSON.stringify({ userId })
         });
 
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
         const result = await response.json();
         
-        if (result.sessionId) {
+        if (result.url) {
             // Redirect to Stripe checkout
-            chrome.tabs.create({ url: `https://checkout.stripe.com/pay/${result.sessionId}` });
+            chrome.tabs.create({ url: result.url });
+            sendResponse({ success: true, message: "Redirecting to payment..." });
+        } else if (result.sessionId) {
+            // Fallback: construct URL manually
+            chrome.tabs.create({ url: `https://checkout.stripe.com/c/pay/${result.sessionId}` });
             sendResponse({ success: true, message: "Redirecting to payment..." });
         } else {
-            sendResponse({ error: "Failed to create payment session" });
+            sendResponse({ error: result.error || "Failed to create payment session" });
         }
     } catch (error) {
         console.error('Token purchase error:', error);
-        sendResponse({ error: "Payment system temporarily unavailable" });
+        console.error('PAYMENT_API_URL:', PAYMENT_API_URL);
+        console.error('Error details:', error.message);
+        sendResponse({ 
+            error: "Payment system temporarily unavailable",
+            details: error.message,
+            url: PAYMENT_API_URL
+        });
     }
 }
 
@@ -517,4 +590,286 @@ async function injectContentScriptAndRetry(tabId, message) {
             chrome.action.setBadgeText({ text: '', tabId: tabId });
         }, 3000);
     }
+}
+
+// --- Authentication Handlers ---
+
+/**
+ * Handle Google OAuth sign in
+ */
+async function handleGoogleSignIn(request, sender, sendResponse) {
+    try {
+        console.log('SmartFind: Starting Google OAuth...');
+        
+        const token = await new Promise((resolve, reject) => {
+            chrome.identity.getAuthToken({ interactive: true }, (token) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                } else {
+                    resolve(token);
+                }
+            });
+        });
+
+        // Get user info from Google
+        const userInfoResponse = await fetch(`https://www.googleapis.com/oauth2/v1/userinfo?access_token=${token}`);
+        if (!userInfoResponse.ok) {
+            throw new Error('Failed to fetch Google user info');
+        }
+        const userInfo = await userInfoResponse.json();
+        
+        // Authenticate with our backend
+        const authResponse = await fetch(`${PAYMENT_API_URL}/auth/oauth`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'google',
+                googleToken: token,
+                email: userInfo.email,
+                name: userInfo.name,
+                picture: userInfo.picture
+            })
+        });
+
+        const authResult = await authResponse.json();
+        if (!authResponse.ok) {
+            throw new Error(authResult.error || 'Backend authentication failed');
+        }
+
+        // Save auth state
+        await chrome.storage.local.set({
+            authToken: authResult.token,
+            currentUser: authResult.user
+        });
+
+        // Sync data after successful authentication
+        await syncUserDataInternal();
+
+        sendResponse({ success: true, user: authResult.user, message: authResult.message });
+
+    } catch (error) {
+        console.error('Google OAuth error:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Handle email sign in
+ */
+async function handleEmailSignIn(request, sender, sendResponse) {
+    try {
+        const { email, password } = request;
+        
+        const response = await fetch(`${PAYMENT_API_URL}/auth/signin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Sign in failed');
+        }
+
+        // Save auth state
+        await chrome.storage.local.set({
+            authToken: result.token,
+            currentUser: result.user
+        });
+
+        // Sync data after successful authentication
+        await syncUserDataInternal();
+
+        sendResponse({ success: true, user: result.user, message: result.message });
+
+    } catch (error) {
+        console.error('Email signin error:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Handle email sign up
+ */
+async function handleEmailSignUp(request, sender, sendResponse) {
+    try {
+        const { email, password, name } = request;
+        
+        const response = await fetch(`${PAYMENT_API_URL}/auth/signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, name })
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Sign up failed');
+        }
+
+        // Save auth state
+        await chrome.storage.local.set({
+            authToken: result.token,
+            currentUser: result.user
+        });
+
+        // Sync data after successful authentication
+        await syncUserDataInternal();
+
+        sendResponse({ success: true, user: result.user, message: result.message });
+
+    } catch (error) {
+        console.error('Email signup error:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Handle sign out
+ */
+async function handleSignOut(request, sender, sendResponse) {
+    try {
+        const { currentUser } = await chrome.storage.local.get(['currentUser']);
+        
+        // Revoke Google token if present
+        if (currentUser?.authType === 'google') {
+            chrome.identity.removeCachedAuthToken({ token: null }, () => {});
+        }
+
+        // Clear local state
+        await chrome.storage.local.remove(['authToken', 'currentUser']);
+
+        console.log('SmartFind: User signed out');
+        sendResponse({ success: true, message: 'Signed out successfully' });
+
+    } catch (error) {
+        console.error('Sign out error:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Handle user data sync
+ */
+async function handleSyncUserData(request, sender, sendResponse) {
+    try {
+        const result = await syncUserDataInternal();
+        sendResponse({ success: true, data: result });
+    } catch (error) {
+        console.error('Sync error:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Handle restore purchases
+ */
+async function handleRestorePurchases(request, sender, sendResponse) {
+    try {
+        const { authToken } = await chrome.storage.local.get(['authToken']);
+        if (!authToken) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`${PAYMENT_API_URL}/user/restore-purchases`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to restore purchases');
+        }
+
+        // Update local storage
+        await chrome.storage.local.set({
+            paidTokens: result.totalTokens
+        });
+        
+        console.log('SmartFind: Purchases restored');
+        sendResponse({ success: true, data: result });
+
+    } catch (error) {
+        console.error('Restore purchases error:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Handle get authentication status
+ */
+async function handleGetAuthStatus(request, sender, sendResponse) {
+    try {
+        const { authToken, currentUser } = await chrome.storage.local.get(['authToken', 'currentUser']);
+        
+        if (!authToken || !currentUser) {
+            sendResponse({ success: true, isAuthenticated: false, user: null });
+            return;
+        }
+
+        // Validate token with backend
+        const response = await fetch(`${PAYMENT_API_URL}/auth/validate`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            sendResponse({ success: true, isAuthenticated: true, user: result.user });
+        } else {
+            // Token invalid, clear auth state
+            await chrome.storage.local.remove(['authToken', 'currentUser']);
+            sendResponse({ success: true, isAuthenticated: false, user: null });
+        }
+
+    } catch (error) {
+        console.error('Auth status error:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Internal function to sync user data with cloud
+ */
+async function syncUserDataInternal() {
+    const { authToken } = await chrome.storage.local.get(['authToken']);
+    if (!authToken) return null;
+
+    try {
+        // Get local data
+        const localData = await chrome.storage.local.get(['paidTokens', 'aiUsageCount', 'userId']);
+        
+        const response = await fetch(`${PAYMENT_API_URL}/user/sync`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({
+                localTokens: localData.paidTokens || 0,
+                localUsage: localData.aiUsageCount || 0,
+                localUserId: localData.userId
+            })
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+            // Update local storage with cloud data
+            await chrome.storage.local.set({
+                paidTokens: result.cloudTokens,
+                aiUsageCount: result.cloudUsage,
+                userId: result.userId
+            });
+            
+            console.log('SmartFind: Data synced with cloud');
+            return result;
+        }
+
+    } catch (error) {
+        console.error('Internal sync error:', error);
+    }
+    return null;
 }

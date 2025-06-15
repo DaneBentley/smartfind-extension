@@ -7,11 +7,17 @@
     "activeTab",
     "scripting",
     "storage",
-    "declarativeNetRequest"
+    "identity"
   ],
   "host_permissions": [
-    "https://api.cerebras.ai/*"
+    "https://smartfind-extension-ffbscu551.vercel.app/*",
+    "https://accounts.google.com/*",
+    "https://*.supabase.co/*"
   ],
+  "oauth2": {
+    "client_id": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": ["email", "profile"]
+  },
   "background": {
     "service_worker": "background.js"
   },
@@ -25,6 +31,7 @@
         "<all_urls>"
       ],
       "js": [
+        "auth.js",
         "content.js"
       ],
       "css": [
@@ -43,14 +50,5 @@
       },
       "description": "Toggle the SmartFind search bar"
     }
-  },
-  "declarative_net_request": {
-    "rule_resources": [
-      {
-        "id": "ruleset_1",
-        "enabled": true,
-        "path": "rules.json"
-      }
-    ]
   }
 }

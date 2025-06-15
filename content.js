@@ -264,9 +264,13 @@ async function handleSearch() {
             }
         } else if (response.success && response.result) {
             // Use AI result
-            performAISearch(response.result);
-            const resultCount = Array.isArray(response.result) ? response.result.length : 1;
-            setStatus(`AI search (${resultCount} result${resultCount > 1 ? 's' : ''} found)`, 'success');
+            const actualHighlights = performAISearch(response.result);
+            // Set status based on actual highlights found, not AI response count
+            if (actualHighlights > 0) {
+                setStatus(`AI search (${actualHighlights} result${actualHighlights > 1 ? 's' : ''} found)`, 'success');
+            } else {
+                setStatus('AI search (no matches found)', 'warning');
+            }
         } else if (response.error) {
             if (response.error.includes('Free tier limit reached') || response.error.includes('purchase more tokens')) {
                 showPaymentOption(response.error);
@@ -373,7 +377,7 @@ function performAISearch(aiResult) {
     
     if (!aiResult) {
         updateResultsDisplay(0, 0);
-        return;
+        return 0;
     }
     
     // Handle both single results (string) and multiple results (array)
@@ -411,8 +415,12 @@ function performAISearch(aiResult) {
         updateResultsDisplay(1, allMatches.length);
         currentHighlightIndex = 0;
         scrollToHighlight(0);
+        console.log(`SmartFind: AI search completed - ${aiResults.length} AI results processed, ${allMatches.length} actual highlights found`);
+        return allMatches.length;
     } else {
         updateResultsDisplay(0, 0);
+        console.log(`SmartFind: AI search completed - ${aiResults.length} AI results processed, 0 actual highlights found`);
+        return 0;
     }
 }
 
@@ -667,11 +675,20 @@ function showPaymentOption(errorMessage) {
 
 // Handle token purchase
 function handleTokenPurchase() {
+    // First try the payment system
     chrome.runtime.sendMessage({ action: "purchaseTokens" }, (response) => {
         if (response.success) {
             setStatus('Redirecting to payment...', 'info');
         } else {
-            setStatus(response.error || 'Payment failed', 'error');
+            // If payment system fails, offer test tokens for development
+            setStatus('Payment system unavailable. Adding test tokens...', 'warning');
+            chrome.runtime.sendMessage({ action: "addTestTokens" }, (testResponse) => {
+                if (testResponse.success) {
+                    setStatus('Added 1000 test tokens for development', 'success');
+                } else {
+                    setStatus(response.error || 'Payment failed', 'error');
+                }
+            });
         }
     });
 }

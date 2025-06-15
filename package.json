@@ -1,0 +1,19 @@
+{
+  "name": "smartfind-extension-backend",
+  "version": "1.0.0",
+  "description": "Backend API for SmartFind Chrome Extension",
+  "main": "api/cerebras.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel"
+  },
+  "keywords": ["chrome-extension", "ai", "search"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "stripe": "^13.0.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3"
+  }
+} 
