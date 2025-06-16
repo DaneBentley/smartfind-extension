@@ -243,6 +243,32 @@
     box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.6) !important;
 }
 
+/* Cross-node highlights - slightly different styling to indicate they span multiple elements */
+.smartfind-highlight.smartfind-cross-node {
+    border-radius: 4px !important;
+    box-shadow: 0 0 0 1px rgba(156, 39, 176, 0.4) !important;
+}
+
+.smartfind-keyword-highlight.smartfind-cross-node {
+    background-color: rgba(255, 235, 59, 0.35) !important;
+    box-shadow: 0 0 0 1px rgba(255, 235, 59, 0.5), inset 0 0 0 1px rgba(255, 193, 7, 0.3) !important;
+}
+
+.smartfind-ai-highlight.smartfind-cross-node {
+    background-color: rgba(33, 150, 243, 0.35) !important;
+    box-shadow: 0 0 0 1px rgba(33, 150, 243, 0.5), inset 0 0 0 1px rgba(25, 118, 210, 0.3) !important;
+}
+
+.smartfind-keyword-highlight.smartfind-cross-node.smartfind-current {
+    background-color: rgba(255, 235, 59, 0.6) !important;
+    box-shadow: 0 0 0 2px rgba(255, 235, 59, 0.7), inset 0 0 0 1px rgba(255, 193, 7, 0.4) !important;
+}
+
+.smartfind-ai-highlight.smartfind-cross-node.smartfind-current {
+    background-color: rgba(33, 150, 243, 0.6) !important;
+    box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.7), inset 0 0 0 1px rgba(25, 118, 210, 0.4) !important;
+}
+
 /* --- Animation for smooth highlighting --- */
 @keyframes smartfind-highlight-appear {
     0% { 
@@ -370,6 +396,27 @@
     .smartfind-ai-highlight.smartfind-current {
         background-color: rgba(100, 181, 246, 0.4) !important;
         box-shadow: 0 0 0 2px rgba(100, 181, 246, 0.5) !important;
+    }
+    
+    /* Cross-node highlights in dark mode */
+    .smartfind-keyword-highlight.smartfind-cross-node {
+        background-color: rgba(255, 213, 79, 0.3) !important;
+        box-shadow: 0 0 0 1px rgba(255, 213, 79, 0.4), inset 0 0 0 1px rgba(255, 193, 7, 0.25) !important;
+    }
+    
+    .smartfind-ai-highlight.smartfind-cross-node {
+        background-color: rgba(100, 181, 246, 0.3) !important;
+        box-shadow: 0 0 0 1px rgba(100, 181, 246, 0.4), inset 0 0 0 1px rgba(25, 118, 210, 0.25) !important;
+    }
+    
+    .smartfind-keyword-highlight.smartfind-cross-node.smartfind-current {
+        background-color: rgba(255, 213, 79, 0.5) !important;
+        box-shadow: 0 0 0 2px rgba(255, 213, 79, 0.6), inset 0 0 0 1px rgba(255, 193, 7, 0.35) !important;
+    }
+    
+    .smartfind-ai-highlight.smartfind-cross-node.smartfind-current {
+        background-color: rgba(100, 181, 246, 0.5) !important;
+        box-shadow: 0 0 0 2px rgba(100, 181, 246, 0.6), inset 0 0 0 1px rgba(25, 118, 210, 0.35) !important;
     }
     
     /* Dark mode search mode indicators */
