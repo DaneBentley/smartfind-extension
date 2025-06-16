@@ -16,7 +16,6 @@ class PopupManager {
         
         // Initialize token displays with default values
         this.updateTokenDisplay('auth', '10');
-        this.updateTokenDisplay('anon', '10');
         
         // Remove automatic sync that was causing unwanted token restoration
         // Users can manually sync via the "Restore Purchases" button if needed
@@ -60,13 +59,10 @@ class PopupManager {
 
         // Token Purchase (Authenticated)
         document.getElementById('buy-tokens-auth').addEventListener('click', () => {
-            this.handleTokenPurchase(true);
+            this.handleTokenPurchase();
         });
 
-        // Token Purchase (Anonymous)
-        document.getElementById('buy-tokens-anon').addEventListener('click', () => {
-            this.handleTokenPurchase(false);
-        });
+
 
         // Restore Purchases
         document.getElementById('restore-purchases').addEventListener('click', () => {
@@ -76,10 +72,6 @@ class PopupManager {
         // Amount input listeners for real-time token calculation
         document.getElementById('amount-auth').addEventListener('input', (e) => {
             this.updateTokenDisplay('auth', e.target.value);
-        });
-
-        document.getElementById('amount-anon').addEventListener('input', (e) => {
-            this.updateTokenDisplay('anon', e.target.value);
         });
 
         // Enter key handling for forms
@@ -92,13 +84,31 @@ class PopupManager {
         document.getElementById('name').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.handleEmailAuth();
         });
+
+        // Help and Privacy links
+        document.getElementById('help-link').addEventListener('click', (e) => {
+            e.preventDefault();
+            chrome.tabs.create({ 
+                url: 'https://smartfind-website-do06q9tyz-danebentley2004-gmailcoms-projects.vercel.app/contact.html' 
+            });
+        });
+
+        document.getElementById('privacy-link').addEventListener('click', (e) => {
+            e.preventDefault();
+            chrome.tabs.create({ 
+                url: 'https://smartfind-website-do06q9tyz-danebentley2004-gmailcoms-projects.vercel.app/privacy.html' 
+            });
+        });
     }
 
     async updateUI() {
         const authenticatedView = document.getElementById('authenticated-view');
         const unauthenticatedView = document.getElementById('unauthenticated-view');
 
+        console.log('SmartFind: updateUI called - currentUser:', this.currentUser, 'authToken:', this.authToken);
+
         if (this.currentUser && this.authToken) {
+            console.log('SmartFind: Showing authenticated view');
             // Show authenticated view
             authenticatedView.classList.remove('hidden');
             unauthenticatedView.classList.add('hidden');
@@ -115,6 +125,7 @@ class PopupManager {
                 avatar.textContent = (this.currentUser.name || 'U').charAt(0).toUpperCase();
             }
         } else {
+            console.log('SmartFind: Showing unauthenticated view');
             // Show unauthenticated view
             authenticatedView.classList.add('hidden');
             unauthenticatedView.classList.remove('hidden');
@@ -131,13 +142,61 @@ class PopupManager {
             document.getElementById('token-count').textContent = remainingTokens.toLocaleString();
             document.getElementById('usage-count').textContent = searchesUsed.toLocaleString();
 
-            // Update anonymous view stats
-            document.getElementById('token-count-anon').textContent = remainingTokens.toLocaleString();
-            document.getElementById('usage-count-anon').textContent = searchesUsed.toLocaleString();
+            // Load replenishment countdown for authenticated users
+            if (this.currentUser && this.authToken) {
+                await this.loadReplenishmentCountdown();
+            }
 
         } catch (error) {
             console.error('Failed to load stats:', error);
             this.showStatus('Failed to load statistics', 'error');
+        }
+    }
+
+    async loadReplenishmentCountdown() {
+        try {
+            const response = await this.sendMessage({ action: "getReplenishmentCountdown" });
+            
+            if (response.success && response.countdown) {
+                const { daysUntilNext, hoursUntilNext } = response.countdown;
+                
+                let countdownText = '';
+                if (daysUntilNext > 0) {
+                    countdownText = `${daysUntilNext} day${daysUntilNext !== 1 ? 's' : ''}`;
+                } else if (hoursUntilNext > 0) {
+                    countdownText = `${hoursUntilNext} hour${hoursUntilNext !== 1 ? 's' : ''}`;
+                } else {
+                    countdownText = 'Available now!';
+                }
+                
+                document.getElementById('replenishment-countdown').textContent = countdownText;
+                
+                // If tokens are available now, trigger a check
+                if (daysUntilNext <= 0 && hoursUntilNext <= 0) {
+                    await this.checkForReplenishment();
+                }
+            } else {
+                document.getElementById('replenishment-countdown').textContent = 'N/A';
+            }
+        } catch (error) {
+            console.error('Failed to load replenishment countdown:', error);
+            document.getElementById('replenishment-countdown').textContent = 'Error';
+        }
+    }
+
+    async checkForReplenishment() {
+        try {
+            const response = await this.sendMessage({ action: "checkMonthlyReplenishment" });
+            
+            if (response.success && response.result && response.result.replenished) {
+                this.showStatus(`Monthly replenishment: +${response.result.tokensAdded} tokens!`, 'success');
+                await this.loadStats(); // Refresh stats
+                
+                // Auto-hide status after success
+                setTimeout(() => this.hideStatus(), 3000);
+            }
+        } catch (error) {
+            console.error('Failed to check replenishment:', error);
         }
     }
 
@@ -148,8 +207,6 @@ class PopupManager {
         // Update token display calculation
         if (tokenElement) {
             tokenElement.textContent = tokens.toLocaleString();
-        } else {
-            console.error(`SmartFind Popup: Could not find token element for ${type}`);
         }
     }
 
@@ -196,14 +253,17 @@ class PopupManager {
                 await this.updateUI();
                 await this.loadStats();
                 
+                // Notify content script about successful sign-in
+                this.notifyContentScriptSignIn();
+                
                 // Auto-hide status after success
                 setTimeout(() => this.hideStatus(), 2000);
             } else {
-                this.showStatus(response.error || 'Google sign-in failed', 'error');
+                this.showStatus(response.error || 'Google sign in failed', 'error');
             }
         } catch (error) {
-            console.error('Google sign-in error:', error);
-            this.showStatus('Google sign-in failed', 'error');
+            console.error('Google sign in error:', error);
+            this.showStatus('Google sign in failed', 'error');
         } finally {
             this.setLoading(false);
         }
@@ -244,6 +304,9 @@ class PopupManager {
                 await this.updateUI();
                 await this.loadStats();
                 
+                // Notify content script about successful sign-in
+                this.notifyContentScriptSignIn();
+                
                 // Clear form
                 document.getElementById('email').value = '';
                 document.getElementById('password').value = '';
@@ -267,33 +330,75 @@ class PopupManager {
     }
 
     async handleSignOut() {
+        console.log('SmartFind: Starting sign out process...');
         this.showStatus('Signing out...', 'info');
         this.setLoading(true);
 
         try {
-            const response = await this.sendMessage({ action: "signOut" });
+            // Clear storage directly first
+            console.log('SmartFind: Clearing storage...');
+            await chrome.storage.local.remove(['authToken', 'currentUser']);
             
-            // Clear local state regardless of response
+            // Verify storage is cleared
+            const storageCheck = await chrome.storage.local.get(['authToken', 'currentUser']);
+            console.log('SmartFind: Storage after clearing:', storageCheck);
+            
+            // Clear local state immediately
             this.currentUser = null;
             this.authToken = null;
+            console.log('SmartFind: Local state cleared');
             
+            // Send sign out message to backend (but don't wait for it)
+            console.log('SmartFind: Sending sign out message to backend...');
+            this.sendMessage({ action: "signOut" }).catch(error => {
+                console.log('SmartFind: Backend sign out failed (non-critical):', error);
+            });
+            
+            // Update UI immediately
+            console.log('SmartFind: Updating UI...');
             await this.updateUI();
+            
+            // Reload stats to show anonymous view
+            console.log('SmartFind: Reloading stats...');
+            await this.loadStats();
+            
+            console.log('SmartFind: Sign out completed successfully');
             this.showStatus('Signed out successfully', 'success');
             
             // Auto-hide status after success
             setTimeout(() => this.hideStatus(), 2000);
+            
         } catch (error) {
-            console.error('Sign out error:', error);
-            this.showStatus('Sign out completed', 'success');
+            console.error('SmartFind: Sign out error:', error);
+            
+            // Even on error, ensure we're signed out locally
+            this.currentUser = null;
+            this.authToken = null;
+            
+            try {
+                await chrome.storage.local.remove(['authToken', 'currentUser']);
+                await this.updateUI();
+                await this.loadStats();
+            } catch (cleanupError) {
+                console.error('SmartFind: Cleanup error:', cleanupError);
+            }
+            
+            this.showStatus('Signed out successfully', 'success');
+            setTimeout(() => this.hideStatus(), 2000);
         } finally {
             this.setLoading(false);
         }
     }
 
-    async handleTokenPurchase(isAuthenticated) {
-        // Get the custom amount from the appropriate input field
-        const amountInputId = isAuthenticated ? 'amount-auth' : 'amount-anon';
-        const amountInput = document.getElementById(amountInputId);
+    async handleTokenPurchase() {
+        // Only authenticated users can purchase tokens
+        if (!this.currentUser || !this.authToken) {
+            this.showStatus('Please sign in to purchase tokens', 'error');
+            return;
+        }
+
+        // Get the custom amount from the authenticated input field
+        const amountInput = document.getElementById('amount-auth');
         const amount = parseFloat(amountInput.value) || 10;
 
         // Validate amount
@@ -304,23 +409,6 @@ class PopupManager {
         if (amount > 500) {
             this.showStatus('Maximum amount is $500', 'error');
             return;
-        }
-
-        const tokens = Math.floor(amount * 100);
-
-        if (!isAuthenticated) {
-            // Show confirmation dialog for anonymous purchase
-            const proceed = confirm(
-                `Purchase ${tokens.toLocaleString()} tokens for $${amount}?\n\n` +
-                'Your tokens will only be available on this device. ' +
-                'Sign in to sync purchases across all your devices.\n\n' +
-                'Click OK to continue with anonymous purchase, or Cancel to sign in first.'
-            );
-            
-            if (!proceed) {
-                this.showStatus('Sign in to sync your purchase across devices', 'info');
-                return;
-            }
         }
 
         this.showStatus('Redirecting to payment...', 'info');
@@ -378,8 +466,6 @@ class PopupManager {
         }
     }
 
-
-
     showStatus(message, type = '') {
         const statusElement = document.getElementById('status');
         statusElement.textContent = message;
@@ -407,6 +493,26 @@ class PopupManager {
                 resolve(response || {});
             });
         });
+    }
+
+    // Notify content script about successful sign-in for automatic search retry
+    async notifyContentScriptSignIn() {
+        try {
+            // Get active tab
+            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tabs[0]) {
+                // Send message to content script
+                chrome.tabs.sendMessage(tabs[0].id, { action: "signInSuccess" }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        console.log('SmartFind: Could not notify content script (tab may not have SmartFind active)');
+                    } else {
+                        console.log('SmartFind: Notified content script of successful sign-in');
+                    }
+                });
+            }
+        } catch (error) {
+            console.log('SmartFind: Error notifying content script:', error);
+        }
     }
 }
 

@@ -125,7 +125,7 @@ export async function handlePurchaseCompleted(request, sender, sendResponse) {
                     if (response.ok) {
                         const result = await response.json();
                         if (result.tokensAdded > 0) {
-                            await addPaidTokens(result.tokensAdded);
+                            await addPaidTokens(result.tokensAdded, true); // Mark as purchased tokens
                             log(`Added ${result.tokensAdded} tokens from anonymous purchase`);
                             sendResponse({ success: true, message: `Added ${result.tokensAdded} tokens successfully` });
                             return;

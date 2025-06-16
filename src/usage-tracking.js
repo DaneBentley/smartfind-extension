@@ -54,6 +54,133 @@ export function getPaidTokensCountPromise() {
 }
 
 /**
+ * Checks and handles monthly token replenishment
+ * Every 30 days after registration, users get replenished to 50 free tokens
+ */
+export async function checkAndHandleMonthlyReplenishment() {
+    try {
+        const { 
+            registrationDate, 
+            lastReplenishmentDate, 
+            paidTokens, 
+            authToken,
+            currentUser 
+        } = await getStorageValues([
+            'registrationDate', 
+            'lastReplenishmentDate', 
+            'paidTokens', 
+            'authToken',
+            'currentUser'
+        ]);
+
+        // Only proceed if user is authenticated
+        if (!authToken || !currentUser) {
+            log('User not authenticated - skipping replenishment check');
+            return { replenished: false, daysUntilNext: null };
+        }
+
+        const now = Date.now();
+        const regDate = registrationDate || now;
+        const lastReplen = lastReplenishmentDate || regDate;
+        
+        // If no registration date exists, set it now
+        if (!registrationDate) {
+            await setStorageValues({ registrationDate: now });
+            log('Registration date set for authenticated user');
+        }
+
+        // Calculate days since registration and last replenishment
+        const daysSinceRegistration = (now - regDate) / (1000 * 60 * 60 * 24);
+        const daysSinceLastReplenishment = (now - lastReplen) / (1000 * 60 * 60 * 24);
+        
+        // Check if 30 days have passed since last replenishment
+        if (daysSinceLastReplenishment >= 30) {
+            const currentTokens = paidTokens || 0;
+            
+            // Calculate how many tokens were purchased (above the base 50 free)
+            // We need to track purchased tokens separately to implement proper replenishment
+            const { purchasedTokens = 0 } = await getStorageValues(['purchasedTokens']);
+            
+            // Ensure user has at least 50 free tokens
+            // The new total should be: purchasedTokens + 50 (replenished free tokens)
+            const newFreeTokens = 50;
+            const newTotal = purchasedTokens + newFreeTokens;
+            
+            // Only update if the user has fewer than expected
+            if (currentTokens < newTotal) {
+                const tokensToAdd = newTotal - currentTokens;
+                
+                await setStorageValues({
+                    paidTokens: newTotal,
+                    lastReplenishmentDate: now,
+                    lastTokenSyncCount: newTotal
+                });
+                
+                log(`Monthly replenishment: Replenished to 50 free tokens (added ${tokensToAdd}, total: ${newTotal})`);
+                return { 
+                    replenished: true, 
+                    tokensAdded: tokensToAdd,
+                    newTotal: newTotal,
+                    daysUntilNext: 30 
+                };
+            } else {
+                // Update replenishment date even if no tokens were added
+                await setStorageValues({ lastReplenishmentDate: now });
+                log('Monthly replenishment: Already at or above expected tokens');
+                return { replenished: false, daysUntilNext: 30 };
+            }
+        }
+        
+        // Calculate days until next replenishment
+        const daysUntilNext = Math.ceil(30 - daysSinceLastReplenishment);
+        return { replenished: false, daysUntilNext: Math.max(daysUntilNext, 0) };
+        
+    } catch (error) {
+        logError('Monthly replenishment check error:', error);
+        return { replenished: false, daysUntilNext: null };
+    }
+}
+
+/**
+ * Gets replenishment countdown information
+ */
+export async function getReplenishmentCountdown() {
+    try {
+        const { 
+            registrationDate, 
+            lastReplenishmentDate, 
+            authToken,
+            currentUser 
+        } = await getStorageValues([
+            'registrationDate', 
+            'lastReplenishmentDate', 
+            'authToken',
+            'currentUser'
+        ]);
+
+        // Return null if user is not authenticated
+        if (!authToken || !currentUser) {
+            return null;
+        }
+
+        const now = Date.now();
+        const regDate = registrationDate || now;
+        const lastReplen = lastReplenishmentDate || regDate;
+        
+        const daysSinceLastReplenishment = (now - lastReplen) / (1000 * 60 * 60 * 24);
+        const daysUntilNext = Math.ceil(30 - daysSinceLastReplenishment);
+        
+        return {
+            daysUntilNext: Math.max(daysUntilNext, 0),
+            hoursUntilNext: Math.max(Math.ceil((30 * 24) - (daysSinceLastReplenishment * 24)), 0)
+        };
+    } catch (error) {
+        logError('Get replenishment countdown error:', error);
+        return null;
+    }
+}
+
+/**
  * Decrements the paid tokens count in chrome.storage.
  */
 export async function decrementPaidTokens() {
@@ -85,33 +212,70 @@ export async function decrementPaidTokens() {
 /**
  * Adds paid tokens to the user's account.
  */
-export async function addPaidTokens(amount) {
-    let { paidTokens } = await getStorageValues(['paidTokens']);
+export async function addPaidTokens(amount, isPurchased = false) {
+    let { paidTokens, purchasedTokens = 0 } = await getStorageValues(['paidTokens', 'purchasedTokens']);
     paidTokens = (paidTokens || 0) + amount;
+    
+    // Track purchased tokens separately for proper replenishment logic
+    if (isPurchased) {
+        purchasedTokens += amount;
+    }
+    
     await setStorageValues({ 
         paidTokens,
+        purchasedTokens,
         lastTokenSyncCount: paidTokens // Initialize sync tracking to current count
     });
 }
 
 /**
- * Checks if user has usage permissions (either within free tier or has paid tokens)
- * @returns {Promise<{canUse: boolean, isUnlimitedFree: boolean, usage: number, paidTokens: number}>}
+ * Checks if user has usage permissions (requires authentication for AI features)
+ * @returns {Promise<{canUse: boolean, isUnlimitedFree: boolean, usage: number, paidTokens: number, needsAuth: boolean}>}
  */
 export async function checkUsagePermissions() {
     const usage = await getUsageCountPromise();
     let paidTokens = await getPaidTokensCountPromise();
     
+    // Check authentication status
+    const { authToken, currentUser, userId } = await getStorageValues(['authToken', 'currentUser', 'userId']);
+    const isAuthenticated = !!(authToken && currentUser);
+    
+    // Require authentication for AI features
+    if (!isAuthenticated) {
+        return {
+            canUse: false,
+            isUnlimitedFree: false,
+            usage,
+            paidTokens,
+            needsAuth: true
+        };
+    }
+    
+    // Check monthly replenishment for authenticated users
+    await checkAndHandleMonthlyReplenishment();
+    
+    // Re-fetch tokens after potential replenishment
+    const updatedData = await getStorageValues(['paidTokens']);
+    paidTokens = updatedData.paidTokens || 0;
+    
     // Check if user is on unlimited free list
-    let { userId } = await getStorageValues(['userId']);
     const isUnlimitedFree = userId && UNLIMITED_FREE_USERS.includes(userId);
     
-    // FIXED: Ensure new users automatically get their 50 free credits
+    // FIXED: Ensure new authenticated users automatically get their 50 free credits
     // If user has no tokens and no usage, they should get their free credits
     if (paidTokens === 0 && usage === 0) {
-        log('New user detected, granting 50 free credits');
+        log('New authenticated user detected, granting 50 free credits');
         await addPaidTokens(50);
         paidTokens = 50;
+        
+        // Set registration date for new users
+        const { registrationDate } = await getStorageValues(['registrationDate']);
+        if (!registrationDate) {
+            await setStorageValues({ 
+                registrationDate: Date.now(),
+                lastReplenishmentDate: Date.now()
+            });
+        }
     }
     
     // SIMPLIFIED LOGIC: Everyone gets 50 free credits as tokens
@@ -122,7 +286,8 @@ export async function checkUsagePermissions() {
         canUse,
         isUnlimitedFree,
         usage,
-        paidTokens
+        paidTokens,
+        needsAuth: false
     };
 }
 

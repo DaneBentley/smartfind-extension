@@ -8,7 +8,9 @@
     "scripting",
     "storage",
     "identity",
-    "webNavigation"
+    "webNavigation",
+    "alarms",
+    "tabs"
   ],
   "host_permissions": [
     "https://smartfind-api.vercel.app/*",

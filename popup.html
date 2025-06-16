@@ -283,6 +283,10 @@
                 <span class="stat-label">Searches Used</span>
                 <span class="stat-value" id="usage-count">Loading...</span>
             </div>
+            <div class="stat-item" id="replenishment-info" style="border-top: 1px solid #d0d7de; padding-top: 8px; margin-top: 8px;">
+                <span class="stat-label">Next Free Tokens (50 monthly)</span>
+                <span class="stat-value" id="replenishment-countdown">Loading...</span>
+            </div>
         </div>
         
         <div class="purchase-section">
@@ -309,7 +313,10 @@
     <!-- Unauthenticated User View -->
     <div id="unauthenticated-view" class="hidden">
         <div class="sign-in-section">
-            <div class="sign-in-title">Sign in to sync your tokens across devices</div>
+            <div class="sign-in-title">Sign in for AI search</div>
+            <div style="font-size: 12px; color: #656d76; margin-bottom: 16px; text-align: center;">
+                Get 50 free AI search tokens + a monthly top off!
+            </div>
             
             <button class="btn btn-google" id="google-signin">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -347,31 +354,12 @@
         
         <div class="divider"></div>
         
-        <div class="stats-section">
-            <div class="stats-title">Current Session</div>
-            <div class="stat-item">
-                <span class="stat-label">Remaining Tokens</span>
-                <span class="stat-value" id="token-count-anon">Loading...</span>
+        <div style="text-align: center; padding: 16px; background: #f6f8fa; border-radius: 8px; margin-bottom: 16px;">
+            <div style="font-size: 14px; font-weight: 500; color: #24292f; margin-bottom: 8px;">
+                🔍 AI Search Features
             </div>
-            <div class="stat-item">
-                <span class="stat-label">Searches Used</span>
-                <span class="stat-value" id="usage-count-anon">Loading...</span>
-            </div>
-        </div>
-        
-        <div class="purchase-section">
-            <div class="form-group">
-                <label class="form-label" for="amount-anon">Amount to Pay ($)</label>
-                <input type="number" class="form-input" id="amount-anon" placeholder="10" min="1" max="500" step="1" value="10">
-                <div style="font-size: 11px; color: #656d76; margin-top: 4px;">
-                    You'll get <span id="tokens-anon">1000</span> tokens (100 tokens per $1)
-                </div>
-            </div>
-            <button class="btn btn-primary" id="buy-tokens-anon">
-                Buy Tokens
-            </button>
-            <div style="font-size: 12px; color: #656d76; text-align: center; margin-top: 8px;">
-                Sign in to sync purchases across devices
+            <div style="font-size: 12px; color: #656d76; line-height: 1.4;">
+                Sign in to unlock intelligent search with natural language queries, smart highlighting, and cross-device sync.
             </div>
         </div>
     </div>
@@ -382,8 +370,8 @@
             Use <strong>/</strong> for AI search • <strong>'</strong> for exact keywords
         </div>
         <div style="margin-top: 8px;">
-            <a href="#" id="help-link">Help</a> • 
-            <a href="#" id="privacy-link">Privacy</a>
+            <a href="https://smartfind-website-do06q9tyz-danebentley2004-gmailcoms-projects.vercel.app/contact.html" target="_blank" id="help-link">Help</a> • 
+            <a href="https://smartfind-website-do06q9tyz-danebentley2004-gmailcoms-projects.vercel.app/privacy.html" target="_blank" id="privacy-link">Privacy</a>
         </div>
     </div>
     

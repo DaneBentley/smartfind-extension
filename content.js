@@ -27,6 +27,13 @@ const CONTENT_EXTRACTION_CONFIG = {
     iframeTimeout: 2000
 };
 
+// Pending search variables for post-authentication retry
+let pendingSearch = {
+    query: null,
+    mode: null,
+    content: null
+};
+
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     log('Content script received message:', request.action);
@@ -53,6 +60,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse({ success: false, error: error.message });
         }
         return true; // Keep the message channel open for async response
+    }
+    
+    if (request.action === "signInSuccess") {
+        log('Sign-in successful, checking for pending search...');
+        retryPendingSearch();
+        sendResponse({ success: true });
+        return;
     }
 });
 
@@ -122,6 +136,32 @@ function handleContentMutation(mutations) {
 function invalidateContentCache() {
     contentCache = null;
     lastContentUpdate = 0;
+}
+
+// Retry pending search after successful sign-in
+async function retryPendingSearch() {
+    if (pendingSearch.query && pendingSearch.mode) {
+        log('Retrying pending search:', pendingSearch.query, 'Mode:', pendingSearch.mode);
+        
+        // Clear the status to show we're retrying
+        setStatus('Retrying search...', 'info');
+        
+        // Retry based on the stored mode
+        if (pendingSearch.mode === 'forceAI') {
+            await performForcedAISearch(pendingSearch.query);
+        } else if (pendingSearch.mode === 'progressive') {
+            await performProgressiveAISearch(pendingSearch.query);
+        }
+        
+        // Clear pending search
+        pendingSearch = {
+            query: null,
+            mode: null,
+            content: null
+        };
+    } else {
+        log('No pending search to retry');
+    }
 }
 
 // Toggle search bar visibility
@@ -469,6 +509,9 @@ function resetInputStyling() {
 async function performForcedAISearch(query) {
     const content = extractPageContent();
     
+    // Show loading state
+    setAISearchLoadingState();
+    
     const response = await new Promise((resolve) => {
         chrome.runtime.sendMessage({
             action: "performAISearch",
@@ -485,15 +528,39 @@ async function performForcedAISearch(query) {
         });
     });
     
-    if (response.success && response.result) {
-        performAISearch(response.result);
+    // Clear loading state
+    clearAISearchLoadingState();
+    
+    if (response.success) {
+        if (response.result) {
+            // AI returned results
+            const actualHighlights = performAISearch(response.result);
+            if (actualHighlights === 0) {
+                // AI returned results but none matched on page
+                setAIEmptyResultsState();
+            }
+        } else {
+            // AI search succeeded but returned no results
+            setAIEmptyResultsState();
+        }
     } else if (response.error) {
-        if (response.error.includes('Free tier limit reached') || response.error.includes('purchase more tokens')) {
+        if (response.needsAuth) {
+            // Store the search for retry after sign-in
+            pendingSearch = {
+                query: query,
+                mode: 'forceAI',
+                content: content
+            };
+            log('Stored pending forced AI search:', query);
+            showSignInPrompt(response.error);
+        } else if (response.error.includes('Free tier limit reached') || response.error.includes('purchase more tokens')) {
             showPaymentOption(response.error);
         } else {
+            // Actual AI search failure
             setStatus('AI search failed', 'error');
         }
     } else {
+        // Unexpected response format
         setStatus('AI search failed', 'error');
     }
 }
@@ -501,6 +568,9 @@ async function performForcedAISearch(query) {
 // Perform progressive AI search (fallback from keyword)
 async function performProgressiveAISearch(query) {
     const content = extractPageContent();
+    
+    // Show loading state
+    setAISearchLoadingState();
     
     const response = await new Promise((resolve) => {
         chrome.runtime.sendMessage({
@@ -518,18 +588,41 @@ async function performProgressiveAISearch(query) {
         });
     });
     
-    if (response.success && response.result) {
-        const actualHighlights = performAISearch(response.result);
-        if (actualHighlights === 0) {
+    // Clear loading state
+    clearAISearchLoadingState();
+    
+    if (response.success) {
+        if (response.result) {
+            // AI returned results
+            const actualHighlights = performAISearch(response.result);
+            if (actualHighlights === 0) {
+                // AI returned results but none matched on page - fall back to keyword styling
+                resetInputStyling();
+                setAIEmptyResultsState();
+            }
+        } else {
+            // AI search succeeded but returned no results - fall back to keyword styling
             resetInputStyling();
+            setAIEmptyResultsState();
         }
     } else if (response.error) {
-        if (response.error.includes('Free tier limit reached') || response.error.includes('purchase more tokens')) {
+        if (response.needsAuth) {
+            // Store the search for retry after sign-in
+            pendingSearch = {
+                query: query,
+                mode: 'progressive',
+                content: content
+            };
+            log('Stored pending progressive AI search:', query);
+            showSignInPrompt(response.error);
+        } else if (response.error.includes('Free tier limit reached') || response.error.includes('purchase more tokens')) {
             showPaymentOption(response.error);
         } else {
+            // Actual failure - fall back to keyword mode silently
             resetInputStyling();
         }
     } else {
+        // Unexpected response - fall back to keyword mode silently
         resetInputStyling();
     }
 }
@@ -2108,14 +2201,14 @@ function setStatus(message, type = '') {
     }
 }
 
-// Show payment option when user hits limit
-function showPaymentOption(errorMessage) {
+// Show sign-in prompt when authentication is required
+function showSignInPrompt(errorMessage) {
     const statusElement = document.getElementById('smartfind-status');
     if (statusElement) {
         statusElement.innerHTML = `
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                <span>${errorMessage}</span>
-                <button id="smartfind-buy-tokens" style="
+                <span>Sign in for smart search</span>
+                <button id="smartfind-sign-in" style="
                     background: #0969da; 
                     color: white; 
                     border: none; 
@@ -2124,85 +2217,57 @@ function showPaymentOption(errorMessage) {
                     font-size: 11px; 
                     cursor: pointer;
                     white-space: nowrap;
-                ">Buy Tokens</button>
-            </div>
-        `;
-        statusElement.className = 'smartfind-status error';
-        statusElement.style.display = 'block';
-        
-        // Add click handler for buy button
-        const buyButton = document.getElementById('smartfind-buy-tokens');
-        if (buyButton) {
-            buyButton.addEventListener('click', handleTokenPurchase);
-        }
-    }
-}
-
-// Handle token purchase
-function handleTokenPurchase() {
-    // Open the extension popup for payment (where user can choose amount)
-    chrome.runtime.sendMessage({ action: "openPopup" });
-    setStatus('Click the SmartFind extension icon to purchase tokens', 'info');
-}
-
-// Show sign-in prompt for token purchase
-function showSignInPrompt() {
-    const statusElement = document.getElementById('smartfind-status');
-    if (statusElement) {
-        statusElement.innerHTML = `
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                    <span>Sign in to sync your purchase across devices</span>
-                    <button id="smartfind-open-popup" style="
-                        background: #0969da; 
-                        color: white; 
-                        border: none; 
-                        padding: 4px 8px; 
-                        border-radius: 4px; 
-                        font-size: 11px; 
-                        cursor: pointer;
-                        white-space: nowrap;
-                    ">Sign In</button>
-                </div>
-                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                    <span style="font-size: 11px; color: #656d76;">Or continue without account:</span>
-                    <button id="smartfind-buy-anonymous" style="
-                        background: #6f42c1; 
-                        color: white; 
-                        border: none; 
-                        padding: 4px 8px; 
-                        border-radius: 4px; 
-                        font-size: 11px; 
-                        cursor: pointer;
-                        white-space: nowrap;
-                    ">Buy Tokens</button>
-                </div>
+                ">Sign In</button>
             </div>
         `;
         statusElement.className = 'smartfind-status info';
         statusElement.style.display = 'block';
         
         // Add click handler for sign-in button
-        const signInButton = document.getElementById('smartfind-open-popup');
+        const signInButton = document.getElementById('smartfind-sign-in');
         if (signInButton) {
             signInButton.addEventListener('click', () => {
-                // Open the extension popup by sending a message to background script
                 chrome.runtime.sendMessage({ action: "openPopup" });
                 setStatus('Click the SmartFind extension icon to sign in', 'info');
             });
         }
+    }
+}
+
+// Show payment option when user hits limit - redirect to sign in for more tokens
+function showPaymentOption(errorMessage) {
+    const statusElement = document.getElementById('smartfind-status');
+    if (statusElement) {
+        statusElement.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <span>Sign in for more tokens</span>
+                <button id="smartfind-sign-in-more" style="
+                    background: #0969da; 
+                    color: white; 
+                    border: none; 
+                    padding: 4px 8px; 
+                    border-radius: 4px; 
+                    font-size: 11px; 
+                    cursor: pointer;
+                    white-space: nowrap;
+                ">Sign In</button>
+            </div>
+        `;
+        statusElement.className = 'smartfind-status info';
+        statusElement.style.display = 'block';
         
-        // Add click handler for anonymous purchase
-        const anonymousButton = document.getElementById('smartfind-buy-anonymous');
-        if (anonymousButton) {
-            anonymousButton.addEventListener('click', () => {
-                // Open the extension popup for payment (where user can choose amount)
+        // Add click handler for sign in button
+        const signInButton = document.getElementById('smartfind-sign-in-more');
+        if (signInButton) {
+            signInButton.addEventListener('click', () => {
                 chrome.runtime.sendMessage({ action: "openPopup" });
-                setStatus('Click the SmartFind extension icon to purchase tokens', 'info');
+                setStatus('Click the SmartFind extension icon to sign in', 'info');
             });
         }
     }
 }
+
+
 
 // Update placeholder text based on input
 function updatePlaceholder() {
@@ -2222,4 +2287,49 @@ function updatePlaceholder() {
 // Escape special regex characters
 function escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Show loading state for AI search
+function setAISearchLoadingState() {
+    const resultsElement = document.getElementById('smartfind-results');
+    if (resultsElement) {
+        resultsElement.textContent = '...';
+        resultsElement.style.color = '#0969da';
+        resultsElement.style.fontWeight = '500';
+    }
+    
+    // Optionally show subtle status message
+    setStatus('AI searching...', 'info');
+}
+
+// Clear loading state for AI search
+function clearAISearchLoadingState() {
+    const resultsElement = document.getElementById('smartfind-results');
+    if (resultsElement) {
+        resultsElement.style.color = '';
+        resultsElement.style.fontWeight = '';
+    }
+    
+    // Clear status message
+    setStatus('');
+}
+
+// Show empty results state for AI search
+function setAIEmptyResultsState() {
+    updateResultsDisplay(0, 0);
+    
+    // Add subtle visual feedback in the results area
+    const resultsElement = document.getElementById('smartfind-results');
+    if (resultsElement) {
+        resultsElement.style.color = '#656d76';
+        resultsElement.style.fontStyle = 'italic';
+        
+        // Reset style after a moment
+        setTimeout(() => {
+            if (resultsElement) {
+                resultsElement.style.color = '';
+                resultsElement.style.fontStyle = '';
+            }
+        }, 2000);
+    }
 }

@@ -2,7 +2,7 @@
 
 import { CONFIG } from './config.js';
 import { isRestrictedUrl, getOrCreateUserId, showErrorBadge, clearBadge, log, logWarning, logError } from './utils.js';
-import { getUsageCount, getPaidTokensCount, addPaidTokens } from './usage-tracking.js';
+import { getUsageCount, getPaidTokensCount, addPaidTokens, getReplenishmentCountdown, checkAndHandleMonthlyReplenishment } from './usage-tracking.js';
 import { handleAISearch, handleKeywordSearch } from './ai-search.js';
 import { 
     handleGoogleSignIn, 
@@ -49,7 +49,13 @@ export function setupMessageListener() {
                 handleAddTokens(request, sendResponse);
                 return true;
             
-
+            case "getReplenishmentCountdown":
+                handleGetReplenishmentCountdown(request, sendResponse);
+                return true;
+            
+            case "checkMonthlyReplenishment":
+                handleCheckMonthlyReplenishment(request, sendResponse);
+                return true;
             
             case "getMyUserId":
                 handleGetMyUserId(request, sendResponse);
@@ -91,8 +97,6 @@ export function setupMessageListener() {
                 handlePurchaseCompleted(request, sender, sendResponse);
                 return true;
             
-
-                
             default:
                 logWarning('Unknown message action:', request.action);
                 sendResponse({ success: false, error: 'Unknown action' });
@@ -105,11 +109,35 @@ export function setupMessageListener() {
  * Handle adding tokens to user account
  */
 async function handleAddTokens(request, sendResponse) {
-    await addPaidTokens(request.amount);
+    await addPaidTokens(request.amount, request.isPurchased || false);
     sendResponse({ success: true });
 }
 
+/**
+ * Handle getting replenishment countdown
+ */
+async function handleGetReplenishmentCountdown(request, sendResponse) {
+    try {
+        const countdown = await getReplenishmentCountdown();
+        sendResponse({ success: true, countdown });
+    } catch (error) {
+        logError('Get replenishment countdown error:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
 
+/**
+ * Handle checking monthly replenishment
+ */
+async function handleCheckMonthlyReplenishment(request, sendResponse) {
+    try {
+        const result = await checkAndHandleMonthlyReplenishment();
+        sendResponse({ success: true, result });
+    } catch (error) {
+        logError('Check monthly replenishment error:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
 
 /**
  * Handle getting current user ID for whitelist purposes

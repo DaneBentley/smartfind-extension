@@ -27,7 +27,17 @@ export async function handleAISearch(request, sender, sendResponse) {
     }
 
     const permissions = await checkUsagePermissions();
-    log('Current usage:', permissions.usage, 'Paid tokens:', permissions.paidTokens, 'Unlimited free:', permissions.isUnlimitedFree);
+    log('Current usage:', permissions.usage, 'Paid tokens:', permissions.paidTokens, 'Unlimited free:', permissions.isUnlimitedFree, 'Needs auth:', permissions.needsAuth);
+
+    // Check if user needs to authenticate
+    if (permissions.needsAuth) {
+        log('User needs to authenticate for AI features');
+        sendResponse({ 
+            error: "Please sign in to use AI search features. Click the SmartFind extension icon to sign in.",
+            needsAuth: true 
+        });
+        return;
+    }
 
     if (!permissions.canUse) {
         log('Free tier limit reached and no paid tokens');
