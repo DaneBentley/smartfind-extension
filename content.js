@@ -109,7 +109,7 @@ function createSearchBar() {
     
     searchBar.innerHTML = `
         <div class="smartfind-search-box">
-            <input type="text" id="smartfind-input" placeholder=" " autocomplete="off" spellcheck="false">
+            <input type="text" id="smartfind-input" placeholder="Search: emails, names, headings, or ask a question..." autocomplete="off" spellcheck="false">
             <div class="smartfind-controls">
                 <span id="smartfind-results" class="smartfind-results">0 of 0</span>
                 <button id="smartfind-prev" class="smartfind-nav-btn" title="Previous result (Shift+Enter)">↑</button>
@@ -166,6 +166,7 @@ function setupEventListeners() {
     
     // Input events
     searchInput.addEventListener('input', debounce(handleSearch, 300));
+    searchInput.addEventListener('input', updatePlaceholder);
     searchInput.addEventListener('keydown', handleKeyDown);
     
     // Button events
@@ -213,82 +214,232 @@ function debounce(func, wait) {
     };
 }
 
-// Main search handler
+// Main search handler with progressive search
 async function handleSearch() {
-    const query = searchInput.value.trim();
-    console.log('SmartFind: handleSearch called with query:', query);
+    const rawQuery = searchInput.value.trim();
+    console.log('SmartFind: handleSearch called with query:', rawQuery);
     
-    if (!query) {
+    if (!rawQuery) {
         clearHighlights();
         updateResultsDisplay(0, 0);
         setStatus('');
+        resetInputStyling();
         return;
     }
     
-    if (query === lastQuery) return;
-    lastQuery = query;
+    if (rawQuery === lastQuery) return;
+    lastQuery = rawQuery;
+    
+    // Parse search mode and clean query
+    const searchMode = parseSearchMode(rawQuery);
+    const query = searchMode.cleanQuery;
+    
+    console.log('SmartFind: Search mode:', searchMode.mode, 'Clean query:', query);
     
     setStatus('Searching...', 'loading');
     isSearching = true;
     
     try {
-        // Extract page content
-        const content = extractPageContent();
-        console.log('SmartFind: Extracted content length:', content.length);
-        
-        // Send to background script for processing
-        const response = await new Promise((resolve) => {
-            chrome.runtime.sendMessage({
-                action: "performAISearch",
-                query: query,
-                content: content
-            }, (response) => {
-                if (chrome.runtime.lastError) {
-                    console.error('SmartFind: Error sending message to background:', chrome.runtime.lastError);
-                    resolve({ error: chrome.runtime.lastError.message });
-                } else {
-                    resolve(response);
-                }
-            });
-        });
-        
-        console.log('SmartFind: Received response from background:', response);
-        
-        if (response.useNativeSearch) {
-            // Use native browser search
-            performNativeSearch(query);
-            if (response.aiError) {
-                setStatus('Using keyword search (AI unavailable)', 'warning');
+        if (searchMode.mode === 'forceKeyword') {
+            // Force keyword search with ' prefix
+            console.log('SmartFind: Forcing keyword search');
+            setInputStyling('keyword', true);
+            const keywordResults = performNativeSearch(query);
+            if (keywordResults > 0) {
+                setStatus(`Keyword search (forced) - ${keywordResults} match${keywordResults > 1 ? 'es' : ''}`, 'success');
             } else {
-                setStatus('Keyword search', 'info');
+                setStatus('Keyword search (forced) - no matches', 'warning');
             }
-        } else if (response.success && response.result) {
-            // Use AI result
-            const actualHighlights = performAISearch(response.result);
-            // Set status based on actual highlights found, not AI response count
-            if (actualHighlights > 0) {
-                setStatus(`AI search (${actualHighlights} result${actualHighlights > 1 ? 's' : ''} found)`, 'success');
-            } else {
-                setStatus('AI search (no matches found)', 'warning');
-            }
-        } else if (response.error) {
-            if (response.error.includes('Free tier limit reached') || response.error.includes('purchase more tokens')) {
-                showPaymentOption(response.error);
-            } else {
-                setStatus(response.error, 'error');
-            }
+        } else if (searchMode.mode === 'forceAI') {
+            // Force AI search with / prefix
+            console.log('SmartFind: Forcing AI search');
+            setInputStyling('ai', true);
+            await performForcedAISearch(query);
         } else {
-            // Fallback to native search
-            performNativeSearch(query);
-            setStatus('Using keyword search', 'info');
+            // Progressive search: keyword first, then AI if no matches
+            console.log('SmartFind: Starting progressive search - trying keyword first');
+            resetInputStyling();
+            
+            const keywordResults = performNativeSearch(query);
+            
+            if (keywordResults > 0) {
+                // Found exact matches - we're done!
+                setStatus(`Found ${keywordResults} exact match${keywordResults > 1 ? 'es' : ''}`, 'success');
+            } else {
+                // No exact matches - try AI search
+                console.log('SmartFind: No keyword matches, trying AI search...');
+                setStatus('No exact matches. Searching with AI...', 'loading');
+                setInputStyling('ai', false);
+                
+                await performProgressiveAISearch(query);
+            }
         }
     } catch (error) {
         console.error('SmartFind search error:', error);
-        performNativeSearch(query);
-        setStatus('Using keyword search (error occurred)', 'warning');
+        
+        // Handle specific error types
+        if (error instanceof DOMException) {
+            console.error('SmartFind: DOM Exception occurred:', error.name, error.message);
+            setStatus('Search error - please try again', 'error');
+        } else if (error instanceof RangeError) {
+            console.error('SmartFind: Range Error occurred:', error.message);
+            setStatus('Search error - please try again', 'error');
+        } else {
+            // Fallback to keyword search for other errors
+            try {
+                performNativeSearch(query);
+                setStatus('Search error - using keyword search', 'warning');
+            } catch (fallbackError) {
+                console.error('SmartFind: Fallback search also failed:', fallbackError);
+                setStatus('Search unavailable - please refresh page', 'error');
+            }
+        }
+        resetInputStyling();
     }
     
     isSearching = false;
+}
+
+// Parse search mode from query prefixes
+function parseSearchMode(query) {
+    if (query.startsWith('/')) {
+        return {
+            mode: 'forceAI',
+            cleanQuery: query.substring(1).trim(),
+            prefix: '/'
+        };
+    } else if (query.startsWith("'")) {
+        return {
+            mode: 'forceKeyword',
+            cleanQuery: query.substring(1).trim(),
+            prefix: "'"
+        };
+    } else {
+        return {
+            mode: 'progressive',
+            cleanQuery: query,
+            prefix: null
+        };
+    }
+}
+
+// Set input styling based on search mode
+function setInputStyling(mode, isForced) {
+    if (!searchInput) return;
+    
+    // Reset all styling
+    searchInput.style.borderLeft = '';
+    searchInput.classList.remove('smartfind-ai-mode', 'smartfind-keyword-mode', 'smartfind-forced-mode');
+    
+    if (mode === 'ai') {
+        searchInput.style.borderLeft = '3px solid #0969da';
+        searchInput.classList.add('smartfind-ai-mode');
+        if (isForced) {
+            searchInput.classList.add('smartfind-forced-mode');
+        }
+    } else if (mode === 'keyword') {
+        searchInput.style.borderLeft = '3px solid #1a7f37';
+        searchInput.classList.add('smartfind-keyword-mode');
+        if (isForced) {
+            searchInput.classList.add('smartfind-forced-mode');
+        }
+    }
+}
+
+// Reset input styling
+function resetInputStyling() {
+    if (!searchInput) return;
+    searchInput.style.borderLeft = '';
+    searchInput.classList.remove('smartfind-ai-mode', 'smartfind-keyword-mode', 'smartfind-forced-mode');
+}
+
+// Perform forced AI search
+async function performForcedAISearch(query) {
+    const content = extractPageContent();
+    
+    // Get search intent for better status messages
+    const intent = getSearchIntent(query);
+    const searchDescription = intent ? intent.description : 'content';
+    
+    setStatus(`AI searching for ${searchDescription}...`, 'loading');
+    
+    const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+            action: "performAISearch",
+            query: query,
+            content: content,
+            forceAI: true
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error('SmartFind: Error sending message to background:', chrome.runtime.lastError);
+                resolve({ error: chrome.runtime.lastError.message });
+            } else {
+                resolve(response);
+            }
+        });
+    });
+    
+    if (response.success && response.result) {
+        const actualHighlights = performAISearch(response.result);
+        if (actualHighlights > 0) {
+            setStatus(`Found ${actualHighlights} ${searchDescription} match${actualHighlights > 1 ? 'es' : ''}`, 'success');
+        } else {
+            setStatus(`No ${searchDescription} found`, 'warning');
+        }
+    } else if (response.error) {
+        if (response.error.includes('Free tier limit reached') || response.error.includes('purchase more tokens')) {
+            showPaymentOption(response.error);
+        } else {
+            setStatus(`AI search failed: ${response.error}`, 'error');
+        }
+    } else {
+        setStatus('AI search failed', 'error');
+    }
+}
+
+// Perform progressive AI search (fallback from keyword)
+async function performProgressiveAISearch(query) {
+    const content = extractPageContent();
+    
+    // Get search intent for better status messages
+    const intent = getSearchIntent(query);
+    const searchDescription = intent ? intent.description : 'related content';
+    
+    const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+            action: "performAISearch",
+            query: query,
+            content: content,
+            fallbackFromKeyword: true
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error('SmartFind: Error sending message to background:', chrome.runtime.lastError);
+                resolve({ error: chrome.runtime.lastError.message });
+            } else {
+                resolve(response);
+            }
+        });
+    });
+    
+    if (response.success && response.result) {
+        const actualHighlights = performAISearch(response.result);
+        if (actualHighlights > 0) {
+            setStatus(`AI found ${actualHighlights} ${searchDescription} match${actualHighlights > 1 ? 'es' : ''}`, 'success');
+        } else {
+            setStatus(`No ${searchDescription} found`, 'warning');
+            resetInputStyling();
+        }
+    } else if (response.error) {
+        if (response.error.includes('Free tier limit reached') || response.error.includes('purchase more tokens')) {
+            showPaymentOption(response.error);
+        } else {
+            setStatus(`No ${searchDescription} found`, 'warning');
+            resetInputStyling();
+        }
+    } else {
+        setStatus(`No ${searchDescription} found`, 'warning');
+        resetInputStyling();
+    }
 }
 
 // Extract readable content from the page
@@ -324,53 +475,77 @@ function performNativeSearch(query) {
     console.log('SmartFind: Performing native search for:', query);
     clearHighlights();
     
-    // Use TreeWalker to find all text nodes
-    const walker = document.createTreeWalker(
-        document.body,
-        NodeFilter.SHOW_TEXT,
-        {
-            acceptNode: function(node) {
-                // Skip script and style elements
-                const parent = node.parentElement;
-                if (parent && (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE')) {
-                    return NodeFilter.FILTER_REJECT;
+    try {
+        // Use TreeWalker to find all text nodes
+        const walker = document.createTreeWalker(
+            document.body,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: function(node) {
+                    // Skip script and style elements
+                    const parent = node.parentElement;
+                    if (parent && (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE')) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    return NodeFilter.FILTER_ACCEPT;
                 }
-                return NodeFilter.FILTER_ACCEPT;
+            }
+        );
+        
+        const matches = [];
+        let node;
+        const regex = new RegExp(escapeRegExp(query), 'gi');
+        
+        while (node = walker.nextNode()) {
+            try {
+                const text = node.textContent;
+                if (!text) continue;
+                
+                let match;
+                regex.lastIndex = 0; // Reset regex state
+                while ((match = regex.exec(text)) !== null) {
+                    // Validate match bounds
+                    if (match.index + match[0].length <= text.length) {
+                        matches.push({
+                            node: node,
+                            start: match.index,
+                            end: match.index + match[0].length,
+                            text: match[0]
+                        });
+                    }
+                    
+                    // Prevent infinite loop
+                    if (match[0].length === 0) {
+                        regex.lastIndex++;
+                    }
+                }
+            } catch (nodeError) {
+                console.warn('SmartFind: Error processing node:', nodeError);
+                continue;
             }
         }
-    );
-    
-    const matches = [];
-    let node;
-    const regex = new RegExp(escapeRegExp(query), 'gi');
-    
-    while (node = walker.nextNode()) {
-        const text = node.textContent;
-        let match;
-        while ((match = regex.exec(text)) !== null) {
-            matches.push({
-                node: node,
-                start: match.index,
-                end: match.index + match[0].length,
-                text: match[0]
-            });
+        
+        console.log('SmartFind: Found', matches.length, 'native matches');
+        
+        // Highlight matches
+        highlightMatches(matches, 'keyword');
+        
+        if (matches.length > 0) {
+            currentHighlightIndex = 0;
+            scrollToHighlight(0);
         }
+        
+        updateResultsDisplay(matches.length > 0 ? 1 : 0, matches.length);
+        return matches.length;
+        
+    } catch (error) {
+        console.error('SmartFind: Error in native search:', error);
+        updateResultsDisplay(0, 0);
+        return 0;
     }
-    
-    console.log('SmartFind: Found', matches.length, 'native matches');
-    
-    // Highlight matches
-    highlightMatches(matches, 'keyword');
-    
-    if (matches.length > 0) {
-        currentHighlightIndex = 0;
-        scrollToHighlight(0);
-    }
-    
-    updateResultsDisplay(matches.length > 0 ? 1 : 0, matches.length);
 }
 
-// Perform AI-enhanced search
+// Perform AI-enhanced search with improved selectivity
 function performAISearch(aiResult) {
     console.log('SmartFind: Performing AI search with result:', aiResult);
     clearHighlights();
@@ -386,25 +561,45 @@ function performAISearch(aiResult) {
     
     let allMatches = [];
     
-    // Process each AI result
+    // Process each AI result with improved matching
     for (const result of aiResults) {
-        // Find exact matches first
+        // Skip very short or generic results
+        if (result.length < 5 || isGenericResult(result)) {
+            console.log('SmartFind: Skipping generic or short result:', result);
+            continue;
+        }
+        
+        // Find exact matches first (preferred)
         const exactMatches = findTextInDOM(result);
         
         if (exactMatches.length > 0) {
-            allMatches.push(...exactMatches);
+            console.log('SmartFind: Found exact matches for:', result);
+            allMatches.push(...exactMatches.map(match => ({ ...match, matchType: 'exact' })));
         } else {
-            // If exact match not found, try fuzzy matching
+            // If exact match not found, try fuzzy matching with stricter criteria
+            console.log('SmartFind: Trying fuzzy matching for:', result);
             const fuzzyMatches = findFuzzyMatches(result);
-            allMatches.push(...fuzzyMatches);
+            
+            // Only add fuzzy matches if they meet quality threshold
+            const qualityMatches = fuzzyMatches.filter(match => 
+                match.score >= 0.8 && match.text.length >= 10
+            );
+            
+            if (qualityMatches.length > 0) {
+                console.log('SmartFind: Found quality fuzzy matches:', qualityMatches.length);
+                allMatches.push(...qualityMatches.map(match => ({ ...match, matchType: 'fuzzy' })));
+            } else {
+                console.log('SmartFind: No quality matches found for:', result);
+            }
         }
     }
     
-    // Remove duplicate matches (same position)
+    // Remove duplicate matches (same position) and sort by quality
     allMatches = removeDuplicateMatches(allMatches);
+    allMatches = sortMatchesByQuality(allMatches);
     
-    // Limit the number of highlights to prevent performance issues
-    const maxHighlights = 20;
+    // Limit the number of highlights to prevent performance issues and improve relevance
+    const maxHighlights = 15; // Reduced from 20 for better selectivity
     if (allMatches.length > maxHighlights) {
         console.log(`SmartFind: Limiting highlights to ${maxHighlights} out of ${allMatches.length} matches`);
         allMatches = allMatches.slice(0, maxHighlights);
@@ -422,6 +617,74 @@ function performAISearch(aiResult) {
         console.log(`SmartFind: AI search completed - ${aiResults.length} AI results processed, 0 actual highlights found`);
         return 0;
     }
+}
+
+// Check if a result is too generic to be useful
+function isGenericResult(result) {
+    const genericPhrases = [
+        'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+        'this', 'that', 'these', 'those', 'a', 'an', 'is', 'are', 'was', 'were',
+        'click here', 'read more', 'learn more', 'see more', 'more info'
+    ];
+    
+    const lowerResult = result.toLowerCase().trim();
+    
+    // Skip if it's just a generic phrase
+    if (genericPhrases.includes(lowerResult)) {
+        return true;
+    }
+    
+    // Skip if it's mostly common words
+    const words = lowerResult.split(/\s+/);
+    const commonWords = words.filter(word => genericPhrases.includes(word));
+    
+    return commonWords.length / words.length > 0.7;
+}
+
+// Sort matches by quality (exact matches first, then by score)
+function sortMatchesByQuality(matches) {
+    return matches.sort((a, b) => {
+        // Exact matches first
+        if (a.matchType === 'exact' && b.matchType !== 'exact') return -1;
+        if (b.matchType === 'exact' && a.matchType !== 'exact') return 1;
+        
+        // Then by score
+        return (b.score || 1) - (a.score || 1);
+    });
+}
+
+// Get search intent for status messages (simplified version)
+function getSearchIntent(query) {
+    // Simple keyword detection for basic user feedback
+    if (/\b(emails?|email|contact)\b/i.test(query)) {
+        return { description: 'email addresses' };
+    }
+    if (/\b(phone|tel|mobile|cell)\b/i.test(query)) {
+        return { description: 'phone numbers' };
+    }
+    if (/\b(names?|people|persons?)\b/i.test(query)) {
+        return { description: 'names and people' };
+    }
+    if (/\b(headings?|titles?|headers?)\b/i.test(query)) {
+        return { description: 'headings and titles' };
+    }
+    if (/\b(links?|urls?|websites?)\b/i.test(query)) {
+        return { description: 'links and URLs' };
+    }
+    if (/\b(dates?|times?|when)\b/i.test(query)) {
+        return { description: 'dates and times' };
+    }
+    if (/\b(prices?|costs?|numbers?)\b/i.test(query)) {
+        return { description: 'prices and numbers' };
+    }
+    if (/\b(addresses?|locations?)\b/i.test(query)) {
+        return { description: 'addresses and locations' };
+    }
+    if (/\b(summary|summarize|tldr|key)\b/i.test(query)) {
+        return { description: 'key information' };
+    }
+    
+    return null; // Default case
 }
 
 // Find exact text matches in DOM
@@ -445,7 +708,7 @@ function findTextInDOM(searchText) {
     while (node = walker.nextNode()) {
         const text = node.textContent;
         const index = text.toLowerCase().indexOf(searchText.toLowerCase());
-        if (index !== -1) {
+        if (index !== -1 && index + searchText.length <= text.length) {
             matches.push({
                 node: node,
                 start: index,
@@ -458,10 +721,18 @@ function findTextInDOM(searchText) {
     return matches;
 }
 
-// Find fuzzy matches for AI results
+// Find fuzzy matches for AI results with improved precision
 function findFuzzyMatches(aiResult) {
-    const words = aiResult.toLowerCase().split(/\s+/).filter(word => word.length > 3);
     const matches = [];
+    
+    // First try to find the exact AI result as a substring
+    const exactMatches = findTextInDOM(aiResult);
+    if (exactMatches.length > 0) {
+        return exactMatches;
+    }
+    
+    // If no exact match, try more precise fuzzy matching
+    const words = aiResult.toLowerCase().split(/\s+/).filter(word => word.length > 2);
     
     if (words.length === 0) return matches;
     
@@ -481,34 +752,111 @@ function findFuzzyMatches(aiResult) {
     
     let node;
     while (node = walker.nextNode()) {
-        const text = node.textContent.toLowerCase();
-        const matchedWords = words.filter(word => text.includes(word));
+        const text = node.textContent;
+        const textLower = text.toLowerCase();
         
-        // If most words match, consider it a match (stricter threshold for multiple results)
-        if (matchedWords.length >= Math.ceil(words.length * 0.7)) {
-            // Find the sentence or paragraph containing these words
-            const sentences = node.textContent.split(/[.!?]+/);
-            for (let i = 0; i < sentences.length; i++) {
-                const sentence = sentences[i].trim();
-                const sentenceLower = sentence.toLowerCase();
-                const sentenceMatches = words.filter(word => sentenceLower.includes(word));
-                
-                if (sentenceMatches.length >= Math.ceil(words.length * 0.7)) {
-                    const startIndex = node.textContent.indexOf(sentence);
-                    if (startIndex !== -1) {
-                        matches.push({
-                            node: node,
-                            start: startIndex,
-                            end: startIndex + sentence.length,
-                            text: sentence
-                        });
-                    }
-                }
+        // Calculate match score based on word overlap and proximity
+        const matchScore = calculateMatchScore(aiResult, text);
+        
+        // Only consider high-quality matches (stricter threshold)
+        if (matchScore >= 0.8) {
+            // Find the best matching sentence or phrase
+            const bestMatch = findBestMatchingPhrase(aiResult, text);
+            if (bestMatch) {
+                matches.push({
+                    node: node,
+                    start: bestMatch.start,
+                    end: bestMatch.end,
+                    text: bestMatch.text,
+                    score: matchScore
+                });
             }
         }
     }
     
-    return matches;
+    // Sort by match score and return top matches
+    return matches.sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 5);
+}
+
+// Calculate match score between AI result and text
+function calculateMatchScore(aiResult, text) {
+    const aiWords = aiResult.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+    const textLower = text.toLowerCase();
+    
+    if (aiWords.length === 0) return 0;
+    
+    // Check for exact phrase match first
+    if (textLower.includes(aiResult.toLowerCase())) {
+        return 1.0;
+    }
+    
+    // Calculate word overlap
+    const matchedWords = aiWords.filter(word => textLower.includes(word));
+    const wordOverlap = matchedWords.length / aiWords.length;
+    
+    // Check for word proximity (words appearing close together)
+    let proximityScore = 0;
+    if (matchedWords.length >= 2) {
+        const positions = matchedWords.map(word => textLower.indexOf(word));
+        const maxDistance = Math.max(...positions) - Math.min(...positions);
+        const avgWordLength = aiResult.length / aiWords.length;
+        proximityScore = Math.max(0, 1 - (maxDistance / (avgWordLength * aiWords.length * 3)));
+    }
+    
+    // Combine scores with weights
+    return (wordOverlap * 0.7) + (proximityScore * 0.3);
+}
+
+// Find the best matching phrase within a text node
+function findBestMatchingPhrase(aiResult, text) {
+    const aiWords = aiResult.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+    const sentences = text.split(/[.!?]+/);
+    
+    let bestMatch = null;
+    let bestScore = 0;
+    
+    for (const sentence of sentences) {
+        const trimmedSentence = sentence.trim();
+        if (trimmedSentence.length < 10) continue; // Skip very short sentences
+        
+        const score = calculateMatchScore(aiResult, trimmedSentence);
+        if (score > bestScore && score >= 0.6) {
+            const startIndex = text.indexOf(trimmedSentence);
+            if (startIndex !== -1) {
+                bestMatch = {
+                    start: startIndex,
+                    end: startIndex + trimmedSentence.length,
+                    text: trimmedSentence
+                };
+                bestScore = score;
+            }
+        }
+    }
+    
+    // If no good sentence match, try to find the best phrase
+    if (!bestMatch && aiWords.length > 0) {
+        const textLower = text.toLowerCase();
+        const firstWord = aiWords[0];
+        const lastWord = aiWords[aiWords.length - 1];
+        
+        const firstIndex = textLower.indexOf(firstWord);
+        const lastIndex = textLower.lastIndexOf(lastWord);
+        
+        if (firstIndex !== -1 && lastIndex !== -1 && lastIndex > firstIndex) {
+            const phraseEnd = lastIndex + lastWord.length;
+            const phrase = text.substring(firstIndex, phraseEnd);
+            
+            if (calculateMatchScore(aiResult, phrase) >= 0.7) {
+                bestMatch = {
+                    start: firstIndex,
+                    end: phraseEnd,
+                    text: phrase
+                };
+            }
+        }
+    }
+    
+    return bestMatch;
 }
 
 // Remove duplicate matches based on position
@@ -529,20 +877,36 @@ function highlightMatches(matches, searchType = 'keyword') {
     clearHighlights();
     
     matches.forEach((match, index) => {
-        const range = document.createRange();
-        range.setStart(match.node, match.start);
-        range.setEnd(match.node, match.end);
-        
-        const highlight = document.createElement('span');
-        // Add different classes for different search types
-        if (searchType === 'ai') {
-            highlight.className = 'smartfind-highlight smartfind-ai-highlight smartfind-new';
-        } else {
-            highlight.className = 'smartfind-highlight smartfind-keyword-highlight smartfind-new';
-        }
-        highlight.setAttribute('data-smartfind-index', index);
-        
         try {
+            // Validate the match before creating range
+            if (!match.node || !match.node.textContent) {
+                console.warn('SmartFind: Invalid match node:', match);
+                return;
+            }
+            
+            const nodeLength = match.node.textContent.length;
+            const start = Math.max(0, Math.min(match.start, nodeLength));
+            const end = Math.max(start, Math.min(match.end, nodeLength));
+            
+            // Skip if invalid range
+            if (start >= end || start >= nodeLength) {
+                console.warn('SmartFind: Invalid range:', { start, end, nodeLength, match });
+                return;
+            }
+            
+            const range = document.createRange();
+            range.setStart(match.node, start);
+            range.setEnd(match.node, end);
+            
+            const highlight = document.createElement('span');
+            // Add different classes for different search types
+            if (searchType === 'ai') {
+                highlight.className = 'smartfind-highlight smartfind-ai-highlight smartfind-new';
+            } else {
+                highlight.className = 'smartfind-highlight smartfind-keyword-highlight smartfind-new';
+            }
+            highlight.setAttribute('data-smartfind-index', index);
+            
             range.surroundContents(highlight);
             currentHighlights.push(highlight);
             
@@ -550,9 +914,10 @@ function highlightMatches(matches, searchType = 'keyword') {
             setTimeout(() => {
                 highlight.classList.remove('smartfind-new');
             }, 200);
+            
         } catch (e) {
-            // If surrounding fails, try a different approach
-            console.warn('Failed to highlight match:', e);
+            // If highlighting fails, log the error but continue
+            console.warn('SmartFind: Failed to highlight match:', e, match);
         }
     });
     
@@ -659,7 +1024,7 @@ function showPaymentOption(errorMessage) {
                     font-size: 11px; 
                     cursor: pointer;
                     white-space: nowrap;
-                ">Buy 1000 tokens ($10)</button>
+                ">Buy Tokens</button>
             </div>
         `;
         statusElement.className = 'smartfind-status error';
@@ -675,30 +1040,9 @@ function showPaymentOption(errorMessage) {
 
 // Handle token purchase
 function handleTokenPurchase() {
-    // First check if user is authenticated
-    chrome.storage.local.get(['authToken', 'currentUser'], (result) => {
-        if (result.authToken && result.currentUser) {
-            // User is authenticated, proceed with purchase
-            chrome.runtime.sendMessage({ action: "purchaseTokens" }, (response) => {
-                if (response.success) {
-                    setStatus('Redirecting to payment...', 'info');
-                } else {
-                    // If payment system fails, offer test tokens for development
-                    setStatus('Payment system unavailable. Adding test tokens...', 'warning');
-                    chrome.runtime.sendMessage({ action: "addTestTokens" }, (testResponse) => {
-                        if (testResponse.success) {
-                            setStatus('Added 1000 test tokens for development', 'success');
-                        } else {
-                            setStatus(response.error || 'Payment failed', 'error');
-                        }
-                    });
-                }
-            });
-        } else {
-            // User is not authenticated, prompt to sign in
-            showSignInPrompt();
-        }
-    });
+    // Open the extension popup for payment (where user can choose amount)
+    chrome.runtime.sendMessage({ action: "openPopup" });
+    setStatus('Click the SmartFind extension icon to purchase tokens', 'info');
 }
 
 // Show sign-in prompt for token purchase
@@ -731,7 +1075,7 @@ function showSignInPrompt() {
                         font-size: 11px; 
                         cursor: pointer;
                         white-space: nowrap;
-                    ">Buy Tokens ($10)</button>
+                    ">Buy Tokens</button>
                 </div>
             </div>
         `;
@@ -752,23 +1096,26 @@ function showSignInPrompt() {
         const anonymousButton = document.getElementById('smartfind-buy-anonymous');
         if (anonymousButton) {
             anonymousButton.addEventListener('click', () => {
-                // Proceed with anonymous purchase
-                chrome.runtime.sendMessage({ action: "purchaseTokens" }, (response) => {
-                    if (response.success) {
-                        setStatus('Redirecting to payment...', 'info');
-                    } else {
-                        setStatus('Payment system unavailable. Adding test tokens...', 'warning');
-                        chrome.runtime.sendMessage({ action: "addTestTokens" }, (testResponse) => {
-                            if (testResponse.success) {
-                                setStatus('Added 1000 test tokens for development', 'success');
-                            } else {
-                                setStatus(response.error || 'Payment failed', 'error');
-                            }
-                        });
-                    }
-                });
+                // Open the extension popup for payment (where user can choose amount)
+                chrome.runtime.sendMessage({ action: "openPopup" });
+                setStatus('Click the SmartFind extension icon to purchase tokens', 'info');
             });
         }
+    }
+}
+
+// Update placeholder text based on input
+function updatePlaceholder() {
+    if (!searchInput) return;
+    
+    const value = searchInput.value;
+    
+    if (value.startsWith('/')) {
+        searchInput.placeholder = 'AI search: emails, phone numbers, names, headings, etc.';
+    } else if (value.startsWith("'")) {
+        searchInput.placeholder = 'Keyword search: Enter exact terms...';
+    } else {
+        searchInput.placeholder = 'Search: emails, names, headings, or ask a question...';
     }
 }
 

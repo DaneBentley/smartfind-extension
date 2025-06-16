@@ -10,7 +10,9 @@
     "identity"
   ],
   "host_permissions": [
-    "https://smartfind-extension-ffbscu551.vercel.app/*",
+    "https://smartfind-extension-4yewn6qd1.vercel.app/*",
+    "https://smartfind-extension-sob8c5ha4.vercel.app/*",
+    "https://smartfind-api.vercel.app/*",
     "https://accounts.google.com/*",
     "https://*.supabase.co/*"
   ],
@@ -19,7 +21,8 @@
     "scopes": ["email", "profile"]
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "src/background.js",
+    "type": "module"
   },
   "action": {
     "default_title": "SmartFind: AI-Enhanced Search",

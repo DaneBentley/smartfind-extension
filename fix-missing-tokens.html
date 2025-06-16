@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fix Missing Tokens - SmartFind</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: #f8f9fa;
+            color: #24292f;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+        }
+        .status.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .status.info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        button {
+            background: #0969da;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            margin: 8px 8px 8px 0;
+        }
+        button:hover {
+            background: #0860ca;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        input {
+            padding: 8px 12px;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            font-size: 14px;
+            width: 100px;
+        }
+        .debug-info {
+            background: #f6f8fa;
+            padding: 16px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            margin: 16px 0;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Fix Missing Tokens</h1>
+        <p>This tool will help you add the missing tokens from your $1 purchase that wasn't processed due to a webhook issue.</p>
+        
+        <div id="status"></div>
+        
+        <div>
+            <h3>Step 1: Check Extension Status</h3>
+            <button onclick="checkExtensionStatus()">Check Extension Connection</button>
+        </div>
+        
+        <div>
+            <h3>Step 2: Add Missing Tokens</h3>
+            <input type="number" id="tokenAmount" value="100" min="1" max="1000">
+            <button onclick="addTokens()">Add Tokens to Account</button>
+            <p><small>Since you paid $1, you should get 100 tokens (100 tokens per dollar)</small></p>
+        </div>
+        
+        <div>
+            <h3>Step 3: Verify Fix</h3>
+            <button onclick="syncUserData()">Sync & Check Balance</button>
+        </div>
+        
+        <div id="debugInfo" class="debug-info" style="display: none;"></div>
+    </div>
+
+    <script>
+                    const API_BASE_URL = 'https://smartfind-api.vercel.app';
+        let authToken = null;
+
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function showDebug(data) {
+            const debugDiv = document.getElementById('debugInfo');
+            debugDiv.textContent = JSON.stringify(data, null, 2);
+            debugDiv.style.display = 'block';
+        }
+
+        async function checkExtensionStatus() {
+            try {
+                showStatus('Checking extension connection...', 'info');
+                
+                // Try to get auth token from extension
+                if (typeof chrome !== 'undefined' && chrome.runtime) {
+                    chrome.runtime.sendMessage('nkjoelppkclkgjlmapppnjkmngpgnhjh', {
+                        action: 'getAuthStatus'
+                    }, (response) => {
+                        if (response && response.isAuthenticated) {
+                            authToken = response.authToken;
+                            showStatus(`✅ Connected! User: ${response.user.email}`, 'success');
+                            showDebug(response);
+                        } else {
+                            showStatus('❌ Extension not authenticated. Please sign in to the extension first.', 'error');
+                        }
+                    });
+                } else {
+                    showStatus('❌ Chrome extension API not available. Please open this page from a regular tab.', 'error');
+                }
+            } catch (error) {
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function addTokens() {
+            if (!authToken) {
+                showStatus('❌ Please check extension status first to get auth token.', 'error');
+                return;
+            }
+
+            try {
+                const tokenAmount = parseInt(document.getElementById('tokenAmount').value);
+                if (!tokenAmount || tokenAmount <= 0) {
+                    showStatus('❌ Please enter a valid token amount.', 'error');
+                    return;
+                }
+
+                showStatus('Adding tokens to your account...', 'info');
+
+                const response = await fetch(`${API_BASE_URL}/api/manual-add-tokens`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        tokens: tokenAmount,
+                        reason: 'Missing tokens from $1 purchase - webhook issue fix'
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showStatus(`✅ Success! Added ${result.tokensAdded} tokens to your account.`, 'success');
+                    showDebug(result);
+                } else {
+                    showStatus(`❌ Error: ${result.error}`, 'error');
+                    showDebug(result);
+                }
+
+            } catch (error) {
+                showStatus(`❌ Network error: ${error.message}`, 'error');
+            }
+        }
+
+        async function syncUserData() {
+            if (!authToken) {
+                showStatus('❌ Please check extension status first.', 'error');
+                return;
+            }
+
+            try {
+                showStatus('Syncing user data...', 'info');
+
+                // Call the extension to sync data
+                if (typeof chrome !== 'undefined' && chrome.runtime) {
+                    chrome.runtime.sendMessage('nkjoelppkclkgjlmapppnjkmngpgnhjh', {
+                        action: 'syncUserData'
+                    }, (response) => {
+                        if (response && response.success) {
+                            showStatus(`✅ Sync complete! Tokens: ${response.cloudTokens}, Usage: ${response.cloudUsage}`, 'success');
+                            showDebug(response);
+                        } else {
+                            showStatus(`❌ Sync failed: ${response.error || 'Unknown error'}`, 'error');
+                        }
+                    });
+                }
+
+            } catch (error) {
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-check extension status on load
+        window.addEventListener('load', () => {
+            setTimeout(checkExtensionStatus, 1000);
+        });
+    </script>
+</body>
+</html> 

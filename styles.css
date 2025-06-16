@@ -49,7 +49,7 @@
     line-height: 1.4 !important;
     border-radius: 8px !important;
     min-width: 0 !important;
-    transition: background-color 0.15s ease !important;
+    transition: all 0.2s ease !important;
 }
 
 #smartfind-input::placeholder {
@@ -59,6 +59,25 @@
 
 #smartfind-input:focus {
     background: rgba(0, 0, 0, 0.03) !important;
+}
+
+/* Search mode visual indicators */
+#smartfind-input.smartfind-ai-mode {
+    border-left: 3px solid #0969da !important;
+    padding-left: 6px !important;
+}
+
+#smartfind-input.smartfind-keyword-mode {
+    border-left: 3px solid #1a7f37 !important;
+    padding-left: 6px !important;
+}
+
+#smartfind-input.smartfind-forced-mode {
+    box-shadow: 0 0 0 1px rgba(9, 105, 218, 0.3) !important;
+}
+
+#smartfind-input.smartfind-keyword-mode.smartfind-forced-mode {
+    box-shadow: 0 0 0 1px rgba(26, 127, 55, 0.3) !important;
 }
 
 /* --- Controls --- */
@@ -351,6 +370,23 @@
     .smartfind-ai-highlight.smartfind-current {
         background-color: rgba(100, 181, 246, 0.4) !important;
         box-shadow: 0 0 0 2px rgba(100, 181, 246, 0.5) !important;
+    }
+    
+    /* Dark mode search mode indicators */
+    #smartfind-input.smartfind-ai-mode {
+        border-left: 3px solid #58a6ff !important;
+    }
+    
+    #smartfind-input.smartfind-keyword-mode {
+        border-left: 3px solid #56d364 !important;
+    }
+    
+    #smartfind-input.smartfind-forced-mode {
+        box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.4) !important;
+    }
+    
+    #smartfind-input.smartfind-keyword-mode.smartfind-forced-mode {
+        box-shadow: 0 0 0 1px rgba(86, 211, 100, 0.4) !important;
     }
 }
 

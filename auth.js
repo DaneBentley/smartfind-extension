@@ -2,7 +2,7 @@
 
 class AuthService {
     constructor() {
-        this.API_BASE_URL = 'https://smartfind-extension-ffbscu551.vercel.app';
+        this.API_BASE_URL = 'https://smartfind-api.vercel.app';
         this.currentUser = null;
         this.authToken = null;
         this.init();
@@ -104,8 +104,14 @@ class AuthService {
     async signOut() {
         try {
             // Revoke Google token if present
-            if (this.currentUser?.authType === 'google') {
-                chrome.identity.removeCachedAuthToken({ token: this.authToken }, () => {});
+            if (this.currentUser?.authType === 'google' && this.authToken) {
+                try {
+                    chrome.identity.removeCachedAuthToken({ token: this.authToken }, () => {
+                        console.log('SmartFind: Google token revoked');
+                    });
+                } catch (error) {
+                    console.log('SmartFind: Could not revoke Google token:', error);
+                }
             }
 
             // Clear local state

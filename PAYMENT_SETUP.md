@@ -27,22 +27,26 @@
 
 ### 5. Test
 1. Use your extension until you hit the 50 search limit
-2. Click "Buy 1000 tokens ($10)"
-3. Use Stripe test card: `4242 4242 4242 4242`
+2. Enter any amount (e.g., $5, $15, $25) in the payment field
+3. Click "Buy Tokens" 
+4. Use Stripe test card: `4242 4242 4242 4242`
 
 ## How It Works
 
 1. **Free Tier**: Users get 50 free searches
-2. **Payment Flow**: When limit reached, user sees "Buy tokens" button
-3. **Stripe Checkout**: User pays $10 for 1000 tokens
-4. **Token Addition**: Tokens automatically added to user's account
-5. **Usage**: Extension uses paid tokens after free tier exhausted
+2. **Flexible Payment**: Users can pay any amount from $1 to $500
+3. **Token Calculation**: 100 tokens per $1 (e.g., $15 = 1,500 tokens)
+4. **Stripe Checkout**: Secure payment processing with custom amounts
+5. **Token Addition**: Tokens automatically added to user's account
+6. **Usage**: Extension uses paid tokens after free tier exhausted
 
 ## Pricing Structure
 
 - **Free**: 50 searches
-- **Paid**: $10 = 1000 tokens (1¢ per search)
-- **Future**: Easy to add different token packages
+- **Flexible Paid**: $1 = 100 tokens, $10 = 1,000 tokens, $25 = 2,500 tokens, etc.
+- **Rate**: 1¢ per search (100 tokens per dollar)
+- **Minimum**: $1 (100 tokens)
+- **Maximum**: $500 (50,000 tokens)
 
 ## Security Notes
 
@@ -50,19 +54,30 @@
 - Payments processed securely through Stripe
 - Tokens stored locally in browser extension storage
 - No sensitive data on your servers
+- Amount validation prevents excessive charges
 
 ## Next Steps (Optional)
 
 1. **Database**: Add proper user/token database (Supabase, Firebase)
-2. **Analytics**: Track usage patterns
-3. **Multiple Packages**: Add $5/500 tokens, $20/2500 tokens options
+2. **Analytics**: Track usage patterns and popular payment amounts
+3. **Preset Options**: Add quick-select buttons for common amounts ($5, $10, $25)
 4. **Subscriptions**: Monthly unlimited plans
 5. **Admin Panel**: View payments and user stats
+6. **Bulk Discounts**: Offer better rates for larger purchases
 
 ## Estimated Costs
 
 - **Stripe**: 2.9% + 30¢ per transaction
 - **Vercel**: Free tier (sufficient for most usage)
-- **Total cost per $10 sale**: ~$0.59
+- **Example costs**:
+  - $5 sale: ~$0.45 fee = $4.55 profit
+  - $10 sale: ~$0.59 fee = $9.41 profit  
+  - $25 sale: ~$1.03 fee = $23.97 profit
 
-Your profit per $10 sale: ~$9.41 
+## Benefits of Flexible Pricing
+
+1. **User Choice**: Users pay exactly what they want/need
+2. **Better Conversion**: Lower barrier to entry with $1 minimum
+3. **Higher Revenue**: Some users will pay more than the old $10 fixed price
+4. **Scalability**: Accommodates both light and heavy users
+5. **Transparency**: Clear 1¢ per search pricing 

@@ -170,19 +170,23 @@ function shouldUseAI(query) {
         // Analysis and understanding intents
         /\b(analyze|analyse|break down|interpret|meaning|significance|implication|conclusion|insight|understanding|perspective)\b/i,
         // Complex phrases (more than 3 words with common connecting words)
-        /\b(and|or|but|with|without|that|which|where|when)\b.*\b(and|or|but|with|without|that|which|where|when)\b/i
+        /\b(and|or|but|with|without|that|which|where|when)\b.*\b(and|or|but|with|without|that|which|where|when)\b/i,
+        // Specific content type searches
+        /\b(emails?|phone numbers?|names?|headings?|titles?|links?|addresses?|dates?|prices?|numbers?|contacts?|people|persons?)\b/i,
+        // Intent-based searches
+        /\b(all|every|find all|show all|list all|get all)\s+(emails?|phone numbers?|names?|headings?|titles?|links?|addresses?|dates?|prices?|numbers?|contacts?)\b/i
     ];
     
     // Don't use AI for simple keyword searches
     const keywordIndicators = [
-        // Single words or simple phrases
-        /^[\w\s]{1,15}$/,
-        // Technical terms, URLs, emails
-        /[@\.\/\\:]/,
-        // Numbers, dates, codes
-        /^\d+/,
+        // Technical terms, URLs, emails (when searching for exact match)
+        /^[@\.\/\\:]+[\w@\.\/\\:]*$/,
+        // Numbers, dates, codes (when searching for exact match)
+        /^\d+[\d\-\/\.]*$/,
         // Quoted exact matches
-        /^".*"$/
+        /^".*"$/,
+        // Single technical words
+        /^[a-zA-Z0-9_\-\.]+$/
     ];
     
     // Check for AI indicators first
@@ -191,13 +195,16 @@ function shouldUseAI(query) {
     // If no AI indicators, check if it's a simple keyword
     if (!hasAIIndicators) {
         const isSimpleKeyword = keywordIndicators.some(pattern => pattern.test(query));
-        if (isSimpleKeyword && query.split(' ').length <= 3) {
+        if (isSimpleKeyword && query.split(' ').length <= 2) {
             return false; // Use keyword search
         }
     }
     
     return hasAIIndicators || query.split(' ').length > 3;
 }
+
+
+
 
 /**
  * Handles keyword search requests (fallback to native search)
@@ -214,8 +221,8 @@ function handleKeywordSearch(request, sender, sendResponse) {
 async function handleAISearch(request, sender, sendResponse) {
     console.log('SmartFind: Handling AI search for query:', request.query);
     
-    // First check if this should actually be a keyword search
-    if (!shouldUseAI(request.query)) {
+    // Skip the shouldUseAI check if this is a fallback from keyword search or forced AI
+    if (!request.fallbackFromKeyword && !request.forceAI && !shouldUseAI(request.query)) {
         console.log('SmartFind: Query classified as keyword search');
         sendResponse({ success: true, useNativeSearch: true });
         return;
@@ -250,13 +257,21 @@ async function handleAISearch(request, sender, sendResponse) {
             sendResponse({ success: true, result: aiResponse });
         } else {
             console.log('SmartFind: AI search failed, falling back to keyword search');
-            // Fallback to keyword search if AI fails
-            sendResponse({ success: true, useNativeSearch: true, aiError: aiResponse.error });
+            // Fallback to keyword search if AI fails (unless forced)
+            if (request.forceAI) {
+                sendResponse({ error: aiResponse.error || 'AI search failed' });
+            } else {
+                sendResponse({ success: true, useNativeSearch: true, aiError: aiResponse.error });
+            }
         }
     } catch (error) {
         console.error("SmartFind - AI Search Error:", error);
-        // Fallback to keyword search on error
-        sendResponse({ success: true, useNativeSearch: true, aiError: error.message });
+        // Fallback to keyword search on error (unless forced)
+        if (request.forceAI) {
+            sendResponse({ error: error.message });
+        } else {
+            sendResponse({ success: true, useNativeSearch: true, aiError: error.message });
+        }
     }
 }
 
@@ -271,22 +286,28 @@ async function callCerebrasAPI(query, content) {
     const maxContentLength = 25000; // Conservative limit for llama3.1-8b
     const truncatedContent = content.substring(0, maxContentLength);
 
-    // Detect if this is a summarization/analysis query
-    const isSummarizationQuery = /\b(tldr|tl;dr|tl dr|summary|summarize|summarise|in a nutshell|key takeaway|key takeaways|main point|main points|gist|essence|overview|recap|brief|highlights|important|crucial|significant|notable|bottom line|core|central|primary|fundamental)\b/i.test(query) ||
-                                /\b(give me the|what's the|whats the).*(summary|gist|main point|key|important|essence)\b/i.test(query);
-    
-    const prompt = isSummarizationQuery ? 
-        `You are an intelligent search assistant. The user is asking for a summary or key information from the provided text content.
+    // Create a single intelligent catch-all prompt
+    const prompt = `You are an intelligent search assistant. Your task is to find the most relevant information from the provided text content that answers the user's query.
 
 **Instructions:**
-1. Read the user's query carefully to understand what type of summary they want.
-2. Thoroughly scan the provided text content.
-3. For summarization requests (TLDR, summary, key takeaways, etc.), find ALL important and relevant information that addresses their request.
-4. Return up to 5 relevant text snippets, each on a separate line, separated by "|||".
-5. Each snippet should be an exact sentence or short paragraph from the content.
-6. Order them by relevance (most relevant first).
-7. Your response format: snippet1|||snippet2|||snippet3 (etc.)
-8. If no relevant text is found, respond with "NO_MATCH_FOUND".
+1. Read the user's query carefully to understand exactly what they're looking for.
+2. Thoroughly scan the provided text content to find relevant information.
+3. Be intelligent about what the user wants:
+   - For email searches: Find email addresses and contact information
+   - For phone searches: Find phone numbers and telephone contact information  
+   - For name searches: Find names of people, authors, speakers, or contacts
+   - For heading searches: Find headings, titles, section headers, or structural elements
+   - For link searches: Find URLs, web addresses, and website references
+   - For date searches: Find dates, times, schedules, or temporal information
+   - For number searches: Find prices, costs, amounts, statistics, or numerical data
+   - For address searches: Find addresses, locations, places, or geographical information
+   - For summary requests: Find the most important and relevant key information
+   - For general queries: Find sentences or paragraphs directly relevant to the query
+4. Be selective and precise - only return content that clearly relates to what the user is asking for.
+5. Return the most relevant text snippets, each on a separate line, separated by "|||".
+6. Each snippet should be an exact sentence or phrase from the content.
+7. Order results by relevance (most relevant first).
+8. If no relevant information is found, respond with "NO_MATCH_FOUND".
 
 **User Query:** "${query}"
 
@@ -295,27 +316,7 @@ async function callCerebrasAPI(query, content) {
 ${truncatedContent}
 ---
 
-**Your Response (multiple snippets separated by |||):` :
-        `You are an intelligent search assistant. Your task is to find ALL relevant sentences or short paragraphs from the provided text content that answer the user's query.
-
-**Instructions:**
-1. Read the user's query carefully.
-2. Thoroughly scan the provided text content.
-3. Identify ALL sentences or short paragraphs that are relevant to the query.
-4. Return up to 5 relevant text snippets, each on a separate line, separated by "|||".
-5. Each snippet should be an exact sentence or short paragraph from the content.
-6. Order them by relevance (most relevant first).
-7. Your response format: snippet1|||snippet2|||snippet3 (etc.)
-8. If no relevant text is found, respond with "NO_MATCH_FOUND".
-
-**User Query:** "${query}"
-
-**Text Content:**
----
-${truncatedContent}
----
-
-**Your Response (multiple snippets separated by |||):`;
+**Your Response (relevant snippets separated by |||):`;
 
     const apiUrl = `${API_BASE_URL}/api/cerebras`;
     

@@ -290,8 +290,15 @@
         </div>
         
         <div class="purchase-section">
+            <div class="form-group">
+                <label class="form-label" for="amount-auth">Amount to Pay ($)</label>
+                <input type="number" class="form-input" id="amount-auth" placeholder="10" min="1" max="500" step="1" value="10">
+                <div style="font-size: 11px; color: #656d76; margin-top: 4px;">
+                    You'll get <span id="tokens-auth">1000</span> tokens (100 tokens per $1)
+                </div>
+            </div>
             <button class="btn btn-primary" id="buy-tokens-auth">
-                Buy 1000 Tokens ($10)
+                Buy Tokens
             </button>
             <button class="btn btn-secondary" id="restore-purchases">
                 Restore Purchases
@@ -300,6 +307,7 @@
         
         <div class="divider"></div>
         
+        <button class="btn btn-secondary" id="test-api" style="margin-bottom: 8px;">Test API Connection</button>
         <button class="btn btn-secondary" id="sign-out">Sign Out</button>
     </div>
     
@@ -361,8 +369,15 @@
         </div>
         
         <div class="purchase-section">
+            <div class="form-group">
+                <label class="form-label" for="amount-anon">Amount to Pay ($)</label>
+                <input type="number" class="form-input" id="amount-anon" placeholder="10" min="1" max="500" step="1" value="10">
+                <div style="font-size: 11px; color: #656d76; margin-top: 4px;">
+                    You'll get <span id="tokens-anon">1000</span> tokens (100 tokens per $1)
+                </div>
+            </div>
             <button class="btn btn-primary" id="buy-tokens-anon">
-                Buy 1000 Tokens ($10)
+                Buy Tokens
             </button>
             <div style="font-size: 12px; color: #656d76; text-align: center; margin-top: 8px;">
                 Sign in to sync purchases across devices
@@ -372,7 +387,13 @@
     
     <div class="footer">
         <div>Press <strong>Ctrl+Shift+F</strong> to search</div>
-        <div style="margin-top: 4px;">
+        <div style="margin-top: 8px; font-size: 11px; color: #8b949e;">
+            <div><strong>Search Tips:</strong></div>
+            <div>• Normal search: keyword → AI if no matches</div>
+            <div>• <strong>/</strong>query - Force AI search</div>
+            <div>• <strong>'</strong>query - Force keyword search</div>
+        </div>
+        <div style="margin-top: 8px;">
             <a href="#" id="help-link">Help</a> • 
             <a href="#" id="privacy-link">Privacy</a>
         </div>
