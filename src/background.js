@@ -23,4 +23,16 @@ chrome.action.onClicked.addListener((tab) => {
     }
 });
 
-// Extension activated via icon click - no keyboard shortcuts needed
+// Listen for the Ctrl+F keyboard shortcut to activate enhanced search
+chrome.commands.onCommand.addListener((command) => {
+    log('Command received:', command);
+    if (command === "toggle-smartfind") {
+        // Send a message to the active tab's content script to toggle the enhanced search UI
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0] && tabs[0].id) {
+                log('Activating SmartFind enhanced search on tab:', tabs[0].id);
+                sendMessageToContentScript(tabs[0].id, { action: "toggleUI" });
+            }
+        });
+    }
+});
