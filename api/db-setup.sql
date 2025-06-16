@@ -129,6 +129,7 @@ RETURNS TABLE(
 DECLARE
     current_data user_data%ROWTYPE;
     purchased_tokens INTEGER;
+    final_tokens INTEGER;
 BEGIN
     -- Get current user data
     SELECT * INTO current_data 
@@ -143,11 +144,27 @@ BEGIN
         INSERT INTO user_data (user_id, paid_tokens, usage_count, legacy_user_id)
         VALUES (user_uuid, GREATEST(local_tokens, purchased_tokens), local_usage, legacy_id)
         RETURNING * INTO current_data;
+        final_tokens := current_data.paid_tokens;
     ELSE
-        -- Update with maximum values (to prevent data loss)
+        -- Smart token sync logic:
+        -- If local tokens are less than cloud tokens, user has used tokens locally
+        -- If local tokens are greater than cloud tokens, user has purchased tokens locally
+        -- If purchased tokens are greater than both, new purchases have been made
+        IF purchased_tokens > GREATEST(current_data.paid_tokens, local_tokens) THEN
+            -- New purchases detected, use purchased tokens
+            final_tokens := purchased_tokens;
+        ELSIF local_tokens < current_data.paid_tokens THEN
+            -- Tokens used locally, use local count (lower value)
+            final_tokens := local_tokens;
+        ELSE
+            -- Use the greater of local or cloud (for cases where tokens were added locally)
+            final_tokens := GREATEST(current_data.paid_tokens, local_tokens);
+        END IF;
+        
+        -- Update with smart sync logic
         UPDATE user_data 
         SET 
-            paid_tokens = GREATEST(current_data.paid_tokens, local_tokens, purchased_tokens),
+            paid_tokens = final_tokens,
             usage_count = GREATEST(current_data.usage_count, local_usage),
             last_sync_at = NOW(),
             legacy_user_id = COALESCE(current_data.legacy_user_id, legacy_id)

@@ -2,8 +2,8 @@
 
 // --- Globals ---
 const FREE_TIER_LIMIT = 50;
-// Use stable Vercel alias that won't change
-const API_BASE_URL = 'https://smartfind-extension-ffbscu551.vercel.app';
+// Use the deployed Vercel URL
+const API_BASE_URL = 'https://smartfind-api.vercel.app';
 const PAYMENT_API_URL = `${API_BASE_URL}/api`;
 
 // Whitelist of user IDs that get unlimited free usage
@@ -13,6 +13,44 @@ const UNLIMITED_FREE_USERS = [
 ];
 
 console.log('SmartFind: Background script loaded');
+
+// Auto-sync tokens on startup for authenticated users (but only if it's been a while since last sync)
+chrome.runtime.onStartup.addListener(async () => {
+    console.log('SmartFind: Extension startup, checking for token sync...');
+    try {
+        const { authToken, lastSyncTime } = await chrome.storage.local.get(['authToken', 'lastSyncTime']);
+        if (authToken) {
+            const now = Date.now();
+            const timeSinceLastSync = now - (lastSyncTime || 0);
+            const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
+            
+            if (timeSinceLastSync > SYNC_INTERVAL) {
+                console.log('SmartFind: Authenticated user detected, syncing tokens...');
+                await syncUserDataInternal();
+                await chrome.storage.local.set({ lastSyncTime: now });
+            } else {
+                console.log('SmartFind: Skipping sync, too recent');
+            }
+        }
+    } catch (error) {
+        console.error('SmartFind: Startup sync error:', error);
+    }
+});
+
+// Also sync when extension is installed or updated (but only on first install)
+chrome.runtime.onInstalled.addListener(async (details) => {
+    console.log('SmartFind: Extension installed/updated, checking for token sync...');
+    try {
+        const { authToken } = await chrome.storage.local.get(['authToken']);
+        if (authToken && details.reason === 'install') {
+            console.log('SmartFind: First install with auth token, syncing tokens...');
+            await syncUserDataInternal();
+            await chrome.storage.local.set({ lastSyncTime: Date.now() });
+        }
+    } catch (error) {
+        console.error('SmartFind: Install sync error:', error);
+    }
+});
 
 // --- Action Click Listener ---
 // Listen for extension icon clicks
@@ -103,6 +141,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     } else if (request.action === "openPopup") {
         handleOpenPopup(request, sender, sendResponse);
+        return true;
+    } else if (request.action === "purchaseCompleted") {
+        handlePurchaseCompleted(request, sender, sendResponse);
+        return true;
+    } else if (request.action === "testAPI") {
+        handleTestAPI(request, sender, sendResponse);
         return true;
     }
 });
@@ -403,6 +447,19 @@ async function decrementPaidTokens() {
     let { paidTokens } = await chrome.storage.local.get('paidTokens');
     paidTokens = Math.max((paidTokens || 0) - 1, 0);
     await chrome.storage.local.set({ paidTokens });
+    
+    // Sync with cloud occasionally (every 10 token uses) to prevent data loss
+    if (paidTokens % 10 === 0) {
+        try {
+            const { authToken } = await chrome.storage.local.get(['authToken']);
+            if (authToken) {
+                console.log('SmartFind: Syncing token usage to cloud...');
+                await syncUserDataInternal();
+            }
+        } catch (error) {
+            console.error('SmartFind: Token sync error:', error);
+        }
+    }
 }
 
 /**
@@ -436,18 +493,33 @@ async function handleTokenPurchase(request, sender, sendResponse) {
             headers['Authorization'] = `Bearer ${authToken}`;
         }
 
-        // Call your payment API
+        // Get the custom amount from the request (default to $10 if not provided)
+        const amount = request.amount || 10;
+        console.log('SmartFind Background: Processing payment with amount:', amount);
+        console.log('SmartFind Background: Full request:', JSON.stringify(request, null, 2));
+
+        // Call your payment API with custom amount
+        console.log('SmartFind Background: Making API request to:', `${PAYMENT_API_URL}/purchase-tokens`);
+        console.log('SmartFind Background: Request headers:', headers);
+        console.log('SmartFind Background: Request body:', JSON.stringify({ userId, amount }));
+        
         const response = await fetch(`${PAYMENT_API_URL}/purchase-tokens`, {
             method: 'POST',
             headers,
-            body: JSON.stringify({ userId })
+            body: JSON.stringify({ userId, amount })
         });
 
+        console.log('SmartFind Background: API response status:', response.status);
+        console.log('SmartFind Background: API response headers:', [...response.headers.entries()]);
+
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            const errorText = await response.text();
+            console.error('SmartFind Background: API error response:', errorText);
+            throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
         }
 
         const result = await response.json();
+        console.log('SmartFind Background: API success response:', result);
         
         if (result.url) {
             // Redirect to Stripe checkout
@@ -464,10 +536,25 @@ async function handleTokenPurchase(request, sender, sendResponse) {
         console.error('Token purchase error:', error);
         console.error('PAYMENT_API_URL:', PAYMENT_API_URL);
         console.error('Error details:', error.message);
+        console.error('Error stack:', error.stack);
+        
+        // Provide more specific error messages
+        let errorMessage = "Payment system temporarily unavailable";
+        if (error.message.includes('Failed to fetch')) {
+            errorMessage = "Network error: Unable to connect to payment system. Please check your internet connection.";
+        } else if (error.message.includes('CORS')) {
+            errorMessage = "CORS error: Payment system configuration issue.";
+        } else if (error.message.includes('HTTP 4')) {
+            errorMessage = "Payment request error: " + error.message;
+        } else if (error.message.includes('HTTP 5')) {
+            errorMessage = "Payment server error: " + error.message;
+        }
+        
         sendResponse({ 
-            error: "Payment system temporarily unavailable",
+            error: errorMessage,
             details: error.message,
-            url: PAYMENT_API_URL
+            url: PAYMENT_API_URL,
+            stack: error.stack
         });
     }
 }
@@ -668,6 +755,7 @@ async function handleGoogleSignIn(request, sender, sendResponse) {
 
         // Sync data after successful authentication
         await syncUserDataInternal();
+        await chrome.storage.local.set({ lastSyncTime: Date.now() });
 
         sendResponse({ success: true, user: authResult.user, message: authResult.message });
 
@@ -710,6 +798,7 @@ async function handleEmailSignIn(request, sender, sendResponse) {
 
         // Sync data after successful authentication
         await syncUserDataInternal();
+        await chrome.storage.local.set({ lastSyncTime: Date.now() });
 
         sendResponse({ success: true, user: result.user, message: result.message });
 
@@ -752,6 +841,7 @@ async function handleEmailSignUp(request, sender, sendResponse) {
 
         // Sync data after successful authentication
         await syncUserDataInternal();
+        await chrome.storage.local.set({ lastSyncTime: Date.now() });
 
         sendResponse({ success: true, user: result.user, message: result.message });
 
@@ -903,6 +993,7 @@ async function syncUserDataInternal() {
             });
             
             console.log('SmartFind: Data synced with cloud');
+            await chrome.storage.local.set({ lastSyncTime: Date.now() });
             return result;
         }
 
@@ -924,5 +1015,157 @@ async function handleOpenPopup(request, sender, sendResponse) {
     } catch (error) {
         console.error('Open popup error:', error);
         sendResponse({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Handle API connectivity test
+ */
+async function handleTestAPI(request, sender, sendResponse) {
+    try {
+        console.log('SmartFind: Testing API connectivity...');
+        
+        const response = await fetch(`${PAYMENT_API_URL}/test-payment`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        console.log('SmartFind: Test API response status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        console.log('SmartFind: Test API success:', result);
+        
+        sendResponse({ 
+            success: true, 
+            message: 'API connectivity test successful',
+            data: result
+        });
+
+    } catch (error) {
+        console.error('API test error:', error);
+        sendResponse({ 
+            success: false, 
+            error: error.message,
+            details: 'Failed to connect to payment API'
+        });
+    }
+}
+
+/**
+ * Handle purchase completion notification
+ */
+async function handlePurchaseCompleted(request, sender, sendResponse) {
+    try {
+        console.log('SmartFind: Purchase completed, syncing user data...');
+        
+        // First try to sync authenticated user data
+        const syncResult = await syncUserDataInternal();
+        
+        if (syncResult) {
+            console.log('SmartFind: Authenticated user data synced after purchase');
+            sendResponse({ success: true, message: 'Tokens synced successfully' });
+        } else {
+            // For anonymous purchases, try to restore purchases using the session ID
+            console.log('SmartFind: No auth token, attempting anonymous purchase restoration...');
+            
+            if (request.sessionId) {
+                try {
+                    // Call the restore purchases API for anonymous users
+                    const response = await fetch(`${PAYMENT_API_URL}/restore-anonymous-purchase`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            sessionId: request.sessionId,
+                            userId: await getOrCreateUserId()
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.tokensAdded > 0) {
+                            await addPaidTokens(result.tokensAdded);
+                            console.log(`SmartFind: Added ${result.tokensAdded} tokens from anonymous purchase`);
+                            sendResponse({ success: true, message: `Added ${result.tokensAdded} tokens successfully` });
+                            return;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Anonymous purchase restoration failed:', error);
+                }
+            }
+            
+            // Fallback: trigger a general restore purchases
+            try {
+                const restoreResult = await handleRestorePurchasesInternal();
+                if (restoreResult && restoreResult.totalTokens > 0) {
+                    console.log('SmartFind: Tokens restored via general restore');
+                    sendResponse({ success: true, message: 'Tokens restored successfully' });
+                } else {
+                    sendResponse({ success: true, message: 'Purchase completed (anonymous)' });
+                }
+            } catch (error) {
+                console.error('General restore failed:', error);
+                sendResponse({ success: true, message: 'Purchase completed (anonymous)' });
+            }
+        }
+    } catch (error) {
+        console.error('Purchase completion error:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Get or create a user ID
+ */
+async function getOrCreateUserId() {
+    let { userId } = await chrome.storage.local.get('userId');
+    if (!userId) {
+        userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        await chrome.storage.local.set({ userId });
+    }
+    return userId;
+}
+
+/**
+ * Internal function to handle restore purchases without sending response
+ */
+async function handleRestorePurchasesInternal() {
+    try {
+        const { authToken } = await chrome.storage.local.get(['authToken']);
+        if (!authToken) {
+            return null;
+        }
+
+        const response = await fetch(`${PAYMENT_API_URL}/user/restore-purchases`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to restore purchases');
+        }
+
+        // Update local storage
+        await chrome.storage.local.set({
+            paidTokens: result.totalTokens
+        });
+        
+        console.log('SmartFind: Purchases restored internally');
+        return result;
+
+    } catch (error) {
+        console.error('Internal restore purchases error:', error);
+        return null;
     }
 }

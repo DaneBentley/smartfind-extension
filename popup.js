@@ -13,6 +13,15 @@ class PopupManager {
         this.setupEventListeners();
         await this.updateUI();
         await this.loadStats();
+        
+        // Initialize token displays with default values
+        this.updateTokenDisplay('auth', '10');
+        this.updateTokenDisplay('anon', '10');
+        
+        // Auto-sync tokens for authenticated users when popup opens
+        if (this.authToken) {
+            this.autoSyncTokens();
+        }
     }
 
     async loadAuthState() {
@@ -51,6 +60,11 @@ class PopupManager {
             this.handleSignOut();
         });
 
+        // Test API connection
+        document.getElementById('test-api').addEventListener('click', () => {
+            this.handleTestAPI();
+        });
+
         // Token Purchase (Authenticated)
         document.getElementById('buy-tokens-auth').addEventListener('click', () => {
             this.handleTokenPurchase(true);
@@ -64,6 +78,15 @@ class PopupManager {
         // Restore Purchases
         document.getElementById('restore-purchases').addEventListener('click', () => {
             this.handleRestorePurchases();
+        });
+
+        // Amount input listeners for real-time token calculation
+        document.getElementById('amount-auth').addEventListener('input', (e) => {
+            this.updateTokenDisplay('auth', e.target.value);
+        });
+
+        document.getElementById('amount-anon').addEventListener('input', (e) => {
+            this.updateTokenDisplay('anon', e.target.value);
         });
 
         // Enter key handling for forms
@@ -125,6 +148,19 @@ class PopupManager {
         } catch (error) {
             console.error('Failed to load stats:', error);
             this.showStatus('Failed to load statistics', 'error');
+        }
+    }
+
+    updateTokenDisplay(type, amount) {
+        const numAmount = parseFloat(amount) || 0;
+        const tokens = Math.floor(numAmount * 100); // 100 tokens per dollar
+        const tokenElement = document.getElementById(`tokens-${type}`);
+        console.log(`SmartFind Popup: Updating ${type} display - Amount: $${numAmount}, Tokens: ${tokens}`);
+        if (tokenElement) {
+            tokenElement.textContent = tokens.toLocaleString();
+            console.log(`SmartFind Popup: Updated ${type} token display to ${tokens.toLocaleString()}`);
+        } else {
+            console.error(`SmartFind Popup: Could not find token element for ${type}`);
         }
     }
 
@@ -266,10 +302,27 @@ class PopupManager {
     }
 
     async handleTokenPurchase(isAuthenticated) {
+        // Get the custom amount from the appropriate input field
+        const amountInputId = isAuthenticated ? 'amount-auth' : 'amount-anon';
+        const amountInput = document.getElementById(amountInputId);
+        const amount = parseFloat(amountInput.value) || 10;
+
+        // Validate amount
+        if (amount < 1) {
+            this.showStatus('Minimum amount is $1', 'error');
+            return;
+        }
+        if (amount > 500) {
+            this.showStatus('Maximum amount is $500', 'error');
+            return;
+        }
+
+        const tokens = Math.floor(amount * 100);
+
         if (!isAuthenticated) {
             // Show confirmation dialog for anonymous purchase
             const proceed = confirm(
-                'Purchase tokens without an account?\n\n' +
+                `Purchase ${tokens.toLocaleString()} tokens for $${amount}?\n\n` +
                 'Your tokens will only be available on this device. ' +
                 'Sign in to sync purchases across all your devices.\n\n' +
                 'Click OK to continue with anonymous purchase, or Cancel to sign in first.'
@@ -285,7 +338,11 @@ class PopupManager {
         this.setLoading(true);
 
         try {
-            const response = await this.sendMessage({ action: "purchaseTokens" });
+            console.log('SmartFind Popup: Sending payment request with amount:', amount);
+            const response = await this.sendMessage({ 
+                action: "purchaseTokens",
+                amount: amount
+            });
             
             if (response.success) {
                 this.showStatus('Redirecting to payment...', 'info');
@@ -326,6 +383,31 @@ class PopupManager {
         }
     }
 
+    async handleTestAPI() {
+        this.showStatus('Testing API connection...', 'info');
+        this.setLoading(true);
+
+        try {
+            const response = await this.sendMessage({ action: "testAPI" });
+            
+            if (response.success) {
+                this.showStatus('✅ API connection successful!', 'success');
+                console.log('API test result:', response.data);
+                
+                // Auto-hide status after success
+                setTimeout(() => this.hideStatus(), 3000);
+            } else {
+                this.showStatus(`❌ API test failed: ${response.error}`, 'error');
+                console.error('API test failed:', response);
+            }
+        } catch (error) {
+            console.error('API test error:', error);
+            this.showStatus('❌ API test failed: Network error', 'error');
+        } finally {
+            this.setLoading(false);
+        }
+    }
+
     showStatus(message, type = '') {
         const statusElement = document.getElementById('status');
         statusElement.textContent = message;
@@ -354,11 +436,39 @@ class PopupManager {
             });
         });
     }
+
+    async autoSyncTokens() {
+        try {
+            console.log('SmartFind Popup: Checking if sync is needed...');
+            
+            // Only sync if it's been a while since last sync
+            const { lastSyncTime } = await chrome.storage.local.get(['lastSyncTime']);
+            const now = Date.now();
+            const timeSinceLastSync = now - (lastSyncTime || 0);
+            const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
+            
+            if (timeSinceLastSync > SYNC_INTERVAL) {
+                console.log('SmartFind Popup: Auto-syncing tokens...');
+                const response = await this.sendMessage({ action: "syncUserData" });
+                
+                if (response.success) {
+                    console.log('SmartFind Popup: Tokens auto-synced successfully');
+                    await this.loadStats(); // Refresh the display
+                } else {
+                    console.log('SmartFind Popup: Auto-sync failed:', response.error);
+                }
+            } else {
+                console.log('SmartFind Popup: Skipping auto-sync, too recent');
+            }
+        } catch (error) {
+            console.error('SmartFind Popup: Auto-sync error:', error);
+        }
+    }
 }
 
 // Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new PopupManager();
+    window.popupManager = new PopupManager();
 });
 
 // Listen for storage changes to update UI
@@ -369,6 +479,13 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
             const popup = window.popupManager;
             if (popup) {
                 popup.loadStats();
+                
+                // Show a brief notification if tokens were added
+                if (changes.paidTokens && changes.paidTokens.newValue > (changes.paidTokens.oldValue || 0)) {
+                    const tokensAdded = changes.paidTokens.newValue - (changes.paidTokens.oldValue || 0);
+                    popup.showStatus(`✅ ${tokensAdded.toLocaleString()} tokens added to your account!`, 'success');
+                    setTimeout(() => popup.hideStatus(), 3000);
+                }
             }
         }
     }
