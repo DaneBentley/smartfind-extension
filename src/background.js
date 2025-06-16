@@ -23,16 +23,4 @@ chrome.action.onClicked.addListener((tab) => {
     }
 });
 
-// Listen for the keyboard shortcut to activate the extension
-chrome.commands.onCommand.addListener((command) => {
-    log('Command received:', command);
-    if (command === "toggle-smartfind") {
-        // Send a message to the active tab's content script to toggle the search UI
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0] && tabs[0].id) {
-                log('Sending toggle message to tab:', tabs[0].id);
-                sendMessageToContentScript(tabs[0].id, { action: "toggleUI" });
-            }
-        });
-    }
-}); 
+// Extension activated via icon click - no keyboard shortcuts needed

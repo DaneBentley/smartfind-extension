@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SmartFind: AI-Enhanced Search",
   "version": "1.0",
-  "description": "Search web pages using natural language questions. Use Ctrl+F (Cmd+F on Mac) to start.",
+  "description": "AI-powered web page search. Press / for natural language questions, ' for keyword search. Enhanced find functionality with intelligent highlighting.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -44,16 +44,5 @@
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
-  },
-  "commands": {
-    "toggle-smartfind": {
-      "suggested_key": {
-        "default": "Ctrl+F",
-        "mac": "Cmd+F",
-        "windows": "Ctrl+F",
-        "linux": "Ctrl+F"
-      },
-      "description": "Toggle the SmartFind search bar"
-    }
   }
 }
