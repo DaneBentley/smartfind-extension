@@ -100,7 +100,7 @@ CRITICAL RULES:
 1. COPY text exactly as it appears - do NOT paraphrase, summarize, or rewrite
 2. Return the most relevant text that directly answers the query
 3. For specific data (names, emails, phones): Return short, precise answers
-4. For concepts, explanations, or summaries: Return complete sentences or paragraphs that fully address the query
+4. For concepts, explanations, or summaries: Return complete sentences or paragraphs that best address the query
 5. If you find multiple relevant sections, separate them with "|||"
 6. If no exact matches exist, return "NO_MATCH_FOUND"
 7. Do NOT add your own commentary, formatting, or explanations
@@ -108,18 +108,18 @@ CRITICAL RULES:
 9. PRESERVE the original capitalization, punctuation, and spacing
 
 RESPONSE LENGTH GUIDELINES:
-- For "names" or "people": Return actual person names (short)
-- For "email": Return email addresses (short)
-- For "phone": Return phone numbers (short)
-- For "summary", "main point", "explanation", or concept queries: Return complete relevant text that fully answers the question (can be longer)
-- For "what is", "how does", "why": Return complete explanations (can be multiple sentences)
+- For "names" or "people": Return actual person names "John Smith"
+- For "email": Return email addresses "help@company.com"
+- For "phone": Return phone numbers "(555) 123-4567"
+- For "summary", "tldr", "main point", "explanation", or concept queries: Return complete relevant text that best answers the question (can be longer)
+- For "what is", "how does", "why": Return best fit explanation (can be multiple sentences)
 
-Examples of GOOD responses:
+Examples of GOOD responses for comparion:
 - Query: "names" → "John Smith" ||| "Dr. Sarah Johnson" ||| "Mike Chen"
 - Query: "email" → "help@company.com"
 - Query: "phone" → "(555) 123-4567"
-- Query: "main point" "tldr" "summary" "conclusion"→ "The company focuses on sustainable energy solutions through innovative solar panel technology."
-- Query: "what is post-labor economy" → "The foundational premise of a post-labor economy is liberating human potential from the requirement of employment. Rather than treating human jobs and livelihoods as an end unto themselves, the priority becomes freeing people from such constraints through technology."
+- Query: "main point" "tldr" "summary" "conclusion"→ find a sentince or paragraph that sums up the content best
+- Query: "what is post-labor economy" → "The foundational premise of a post-labor economy is..."
 
 User Query: "${query}"
 

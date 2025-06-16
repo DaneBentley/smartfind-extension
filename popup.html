@@ -276,16 +276,12 @@
         <div class="stats-section">
             <div class="stats-title">Your Account</div>
             <div class="stat-item">
-                <span class="stat-label">Available Tokens</span>
+                <span class="stat-label">Remaining Tokens</span>
                 <span class="stat-value" id="token-count">Loading...</span>
             </div>
             <div class="stat-item">
                 <span class="stat-label">Searches Used</span>
                 <span class="stat-value" id="usage-count">Loading...</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Free Searches Left</span>
-                <span class="stat-value" id="free-searches">Loading...</span>
             </div>
         </div>
         
@@ -300,14 +296,13 @@
             <button class="btn btn-primary" id="buy-tokens-auth">
                 Buy Tokens
             </button>
-            <button class="btn btn-secondary" id="restore-purchases">
-                Restore Purchases
+                            <button class="btn btn-secondary" id="restore-purchases">
+                    Check Purchases
             </button>
         </div>
         
         <div class="divider"></div>
         
-        <button class="btn btn-secondary" id="test-api" style="margin-bottom: 8px;">Test API Connection</button>
         <button class="btn btn-secondary" id="sign-out">Sign Out</button>
     </div>
     
@@ -355,16 +350,12 @@
         <div class="stats-section">
             <div class="stats-title">Current Session</div>
             <div class="stat-item">
-                <span class="stat-label">Available Tokens</span>
+                <span class="stat-label">Remaining Tokens</span>
                 <span class="stat-value" id="token-count-anon">Loading...</span>
             </div>
             <div class="stat-item">
                 <span class="stat-label">Searches Used</span>
                 <span class="stat-value" id="usage-count-anon">Loading...</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Free Searches Left</span>
-                <span class="stat-value" id="free-searches-anon">Loading...</span>
             </div>
         </div>
         
@@ -386,12 +377,9 @@
     </div>
     
     <div class="footer">
-        <div>Press <strong>Ctrl+Shift+F</strong> to search</div>
+        <div>Press <strong>Ctrl+F</strong> to search</div>
         <div style="margin-top: 8px; font-size: 11px; color: #8b949e;">
-            <div><strong>Search Tips:</strong></div>
-            <div>• Normal search: keyword → AI if no matches</div>
-            <div>• <strong>/</strong>query - Force AI search</div>
-            <div>• <strong>'</strong>query - Force keyword search</div>
+            Use <strong>/</strong> for AI search • <strong>'</strong> for exact keywords
         </div>
         <div style="margin-top: 8px;">
             <a href="#" id="help-link">Help</a> • 

@@ -101,11 +101,13 @@ CREATE TRIGGER update_user_data_updated_at BEFORE UPDATE ON user_data
 CREATE TRIGGER update_purchases_updated_at BEFORE UPDATE ON purchases
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Function to get user total tokens (from purchases)
+-- Function to get user total tokens (from purchases + 50 free credits)
 CREATE OR REPLACE FUNCTION get_user_total_purchased_tokens(user_uuid UUID)
 RETURNS INTEGER AS $$
 BEGIN
-    RETURN COALESCE(
+    -- SIMPLIFIED SYSTEM: Everyone gets 50 free credits + actual purchases
+    -- This eliminates the need to track free vs paid separately
+    RETURN 50 + COALESCE(
         (SELECT SUM(tokens_purchased) 
          FROM purchases 
          WHERE user_id = user_uuid AND status = 'completed'),
@@ -130,6 +132,7 @@ DECLARE
     current_data user_data%ROWTYPE;
     purchased_tokens INTEGER;
     final_tokens INTEGER;
+    final_usage INTEGER;
 BEGIN
     -- Get current user data
     SELECT * INTO current_data 
@@ -139,33 +142,28 @@ BEGIN
     -- Get total purchased tokens
     purchased_tokens := get_user_total_purchased_tokens(user_uuid);
     
+    -- Calculate final usage (always use the maximum to prevent losing consumption data)
+    IF current_data.id IS NULL THEN
+        final_usage := local_usage;
+    ELSE
+        final_usage := GREATEST(current_data.usage_count, local_usage);
+    END IF;
+    
+    -- Calculate remaining tokens based on purchases minus total usage
+    final_tokens := GREATEST(0, purchased_tokens - final_usage);
+    
     -- If no user data exists, create it
     IF current_data.id IS NULL THEN
         INSERT INTO user_data (user_id, paid_tokens, usage_count, legacy_user_id)
-        VALUES (user_uuid, GREATEST(local_tokens, purchased_tokens), local_usage, legacy_id)
+        VALUES (user_uuid, final_tokens, final_usage, legacy_id)
         RETURNING * INTO current_data;
-        final_tokens := current_data.paid_tokens;
     ELSE
-        -- Smart token sync logic:
-        -- If local tokens are less than cloud tokens, user has used tokens locally
-        -- If local tokens are greater than cloud tokens, user has purchased tokens locally
-        -- If purchased tokens are greater than both, new purchases have been made
-        IF purchased_tokens > GREATEST(current_data.paid_tokens, local_tokens) THEN
-            -- New purchases detected, use purchased tokens
-            final_tokens := purchased_tokens;
-        ELSIF local_tokens < current_data.paid_tokens THEN
-            -- Tokens used locally, use local count (lower value)
-            final_tokens := local_tokens;
-        ELSE
-            -- Use the greater of local or cloud (for cases where tokens were added locally)
-            final_tokens := GREATEST(current_data.paid_tokens, local_tokens);
-        END IF;
-        
-        -- Update with smart sync logic
+        -- Update with proper consumption tracking
+        -- Always preserve the maximum usage count and calculate tokens accordingly
         UPDATE user_data 
         SET 
             paid_tokens = final_tokens,
-            usage_count = GREATEST(current_data.usage_count, local_usage),
+            usage_count = final_usage,
             last_sync_at = NOW(),
             legacy_user_id = COALESCE(current_data.legacy_user_id, legacy_id)
         WHERE user_id = user_uuid

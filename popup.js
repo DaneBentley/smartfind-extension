@@ -18,10 +18,8 @@ class PopupManager {
         this.updateTokenDisplay('auth', '10');
         this.updateTokenDisplay('anon', '10');
         
-        // Auto-sync tokens for authenticated users when popup opens
-        if (this.authToken) {
-            this.autoSyncTokens();
-        }
+        // Remove automatic sync that was causing unwanted token restoration
+        // Users can manually sync via the "Restore Purchases" button if needed
     }
 
     async loadAuthState() {
@@ -58,11 +56,6 @@ class PopupManager {
         // Sign Out
         document.getElementById('sign-out').addEventListener('click', () => {
             this.handleSignOut();
-        });
-
-        // Test API connection
-        document.getElementById('test-api').addEventListener('click', () => {
-            this.handleTestAPI();
         });
 
         // Token Purchase (Authenticated)
@@ -131,19 +124,16 @@ class PopupManager {
     async loadStats() {
         try {
             const result = await chrome.storage.local.get(['paidTokens', 'aiUsageCount']);
-            const paidTokens = result.paidTokens || 0;
-            const usageCount = result.aiUsageCount || 0;
-            const freeSearchesLeft = Math.max(0, 50 - usageCount);
+            const remainingTokens = result.paidTokens || 0;
+            const searchesUsed = result.aiUsageCount || 0;
 
             // Update authenticated view stats
-            document.getElementById('token-count').textContent = paidTokens.toLocaleString();
-            document.getElementById('usage-count').textContent = usageCount.toLocaleString();
-            document.getElementById('free-searches').textContent = freeSearchesLeft.toLocaleString();
+            document.getElementById('token-count').textContent = remainingTokens.toLocaleString();
+            document.getElementById('usage-count').textContent = searchesUsed.toLocaleString();
 
             // Update anonymous view stats
-            document.getElementById('token-count-anon').textContent = paidTokens.toLocaleString();
-            document.getElementById('usage-count-anon').textContent = usageCount.toLocaleString();
-            document.getElementById('free-searches-anon').textContent = freeSearchesLeft.toLocaleString();
+            document.getElementById('token-count-anon').textContent = remainingTokens.toLocaleString();
+            document.getElementById('usage-count-anon').textContent = searchesUsed.toLocaleString();
 
         } catch (error) {
             console.error('Failed to load stats:', error);
@@ -359,7 +349,7 @@ class PopupManager {
     }
 
     async handleRestorePurchases() {
-        this.showStatus('Restoring purchases...', 'info');
+        this.showStatus('Checking purchases...', 'info');
         this.setLoading(true);
 
         try {
@@ -367,46 +357,29 @@ class PopupManager {
             
             if (response.success) {
                 const data = response.data;
-                this.showStatus(`Restored ${data.totalTokens} tokens from ${data.purchaseCount} purchases`, 'success');
+                
+                if (data.tokensRestored > 0) {
+                    this.showStatus(`✅ Restored ${data.tokensRestored.toLocaleString()} missing tokens! You now have ${data.totalTokens.toLocaleString()} tokens.`, 'success');
+                } else {
+                    this.showStatus(`✅ No restoration needed. You have ${data.totalTokens.toLocaleString()} tokens from ${data.purchaseCount} purchases.`, 'success');
+                }
+                
                 await this.loadStats();
                 
                 // Auto-hide status after success
-                setTimeout(() => this.hideStatus(), 3000);
+                setTimeout(() => this.hideStatus(), 4000);
             } else {
-                this.showStatus(response.error || 'Failed to restore purchases', 'error');
+                this.showStatus(response.error || 'Failed to check purchases', 'error');
             }
         } catch (error) {
             console.error('Restore purchases error:', error);
-            this.showStatus('Failed to restore purchases', 'error');
+            this.showStatus('Failed to check purchases', 'error');
         } finally {
             this.setLoading(false);
         }
     }
 
-    async handleTestAPI() {
-        this.showStatus('Testing API connection...', 'info');
-        this.setLoading(true);
 
-        try {
-            const response = await this.sendMessage({ action: "testAPI" });
-            
-            if (response.success) {
-                this.showStatus('✅ API connection successful!', 'success');
-                console.log('API test result:', response.data);
-                
-                // Auto-hide status after success
-                setTimeout(() => this.hideStatus(), 3000);
-            } else {
-                this.showStatus(`❌ API test failed: ${response.error}`, 'error');
-                console.error('API test failed:', response);
-            }
-        } catch (error) {
-            console.error('API test error:', error);
-            this.showStatus('❌ API test failed: Network error', 'error');
-        } finally {
-            this.setLoading(false);
-        }
-    }
 
     showStatus(message, type = '') {
         const statusElement = document.getElementById('status');
@@ -435,34 +408,6 @@ class PopupManager {
                 resolve(response || {});
             });
         });
-    }
-
-    async autoSyncTokens() {
-        try {
-            console.log('SmartFind Popup: Checking if sync is needed...');
-            
-            // Only sync if it's been a while since last sync
-            const { lastSyncTime } = await chrome.storage.local.get(['lastSyncTime']);
-            const now = Date.now();
-            const timeSinceLastSync = now - (lastSyncTime || 0);
-            const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
-            
-            if (timeSinceLastSync > SYNC_INTERVAL) {
-                console.log('SmartFind Popup: Auto-syncing tokens...');
-                const response = await this.sendMessage({ action: "syncUserData" });
-                
-                if (response.success) {
-                    console.log('SmartFind Popup: Tokens auto-synced successfully');
-                    await this.loadStats(); // Refresh the display
-                } else {
-                    console.log('SmartFind Popup: Auto-sync failed:', response.error);
-                }
-            } else {
-                console.log('SmartFind Popup: Skipping auto-sync, too recent');
-            }
-        } catch (error) {
-            console.error('SmartFind Popup: Auto-sync error:', error);
-        }
     }
 }
 

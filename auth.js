@@ -153,7 +153,8 @@ class AuthService {
                 await chrome.storage.local.set({
                     paidTokens: result.cloudTokens,
                     aiUsageCount: result.cloudUsage,
-                    userId: result.userId
+                    userId: result.userId,
+                    lastTokenSyncCount: result.cloudTokens // Initialize sync tracking to current count
                 });
                 
                 console.log('SmartFind: Data synced with cloud');
@@ -180,12 +181,17 @@ class AuthService {
 
             const result = await response.json();
             if (response.ok) {
-                // Update local storage
+                // Update local storage with the actual current tokens (not necessarily restored)
                 await chrome.storage.local.set({
-                    paidTokens: result.totalTokens
+                    paidTokens: result.totalTokens,
+                    lastTokenSyncCount: result.totalTokens // Initialize sync tracking to current count
                 });
                 
-                console.log('SmartFind: Purchases restored');
+                if (result.tokensRestored > 0) {
+                    console.log(`SmartFind: Restored ${result.tokensRestored} missing tokens`);
+                } else {
+                    console.log('SmartFind: No restoration needed - tokens are up to date');
+                }
                 return result;
             } else {
                 throw new Error(result.error || 'Failed to restore purchases');

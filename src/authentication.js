@@ -74,6 +74,7 @@ export async function handleGoogleSignIn(request, sender, sendResponse) {
 
         // Sync data after successful authentication
         await syncUserDataInternal();
+        
         await setStorageValues({ lastSyncTime: Date.now() });
 
         sendResponse({ success: true, user: authResult.user, message: authResult.message });
@@ -117,6 +118,7 @@ export async function handleEmailSignIn(request, sender, sendResponse) {
 
         // Sync data after successful authentication
         await syncUserDataInternal();
+        
         await setStorageValues({ lastSyncTime: Date.now() });
 
         sendResponse({ success: true, user: result.user, message: result.message });
@@ -160,6 +162,7 @@ export async function handleEmailSignUp(request, sender, sendResponse) {
 
         // Sync data after successful authentication
         await syncUserDataInternal();
+        
         await setStorageValues({ lastSyncTime: Date.now() });
 
         sendResponse({ success: true, user: result.user, message: result.message });
@@ -208,16 +211,20 @@ export async function handleSyncUserData(request, sender, sendResponse) {
 }
 
 /**
- * Handle restore purchases
+ * Handle restore purchases - only restores tokens if there's evidence of data loss
  */
 export async function handleRestorePurchases(request, sender, sendResponse) {
     try {
         const result = await handleRestorePurchasesInternal();
-        if (result && result.totalTokens > 0) {
-            log('Purchases restored');
+        if (result) {
+            if (result.tokensRestored > 0) {
+                log(`Purchases restored: ${result.tokensRestored} tokens`);
+            } else {
+                log('Purchases checked: No restoration needed');
+            }
             sendResponse({ success: true, data: result });
         } else {
-            throw new Error('No purchases found to restore');
+            throw new Error('No purchases found or authentication required');
         }
     } catch (error) {
         logError('Restore purchases error:', error);
@@ -286,15 +293,45 @@ export async function syncUserDataInternal() {
 
         const result = await response.json();
         if (response.ok) {
-            // Update local storage with cloud data
-            await setStorageValues({
-                paidTokens: result.cloudTokens,
-                aiUsageCount: result.cloudUsage,
+            // FIXED SYNC LOGIC - Preserves actual consumption, includes free credits
+            const updatedData = {
                 userId: result.userId
+            };
+
+            const localTokens = localData.paidTokens || 0;
+            const cloudTokens = result.cloudTokens || 0;
+            const totalPurchased = result.totalPurchased || 0;  // Only paid tokens purchased
+            const localUsage = localData.aiUsageCount || 0;
+            const cloudUsage = result.cloudUsage || 0;
+            
+            // Use the MAXIMUM usage to ensure tokens consumed locally are not lost
+            const maxUsage = Math.max(localUsage, cloudUsage);
+            updatedData.aiUsageCount = maxUsage;
+            
+            // CRITICAL FIX: Include 50 free credits in calculation
+            // Total available = purchased tokens + 50 free credits
+            const totalAvailable = totalPurchased + 50;
+            const expectedRemainingTokens = Math.max(0, totalAvailable - maxUsage);
+            
+            // Always use expected remaining tokens to prevent consumption from being lost
+            updatedData.paidTokens = expectedRemainingTokens;
+            
+            if (localTokens !== expectedRemainingTokens) {
+                log(`Token sync: Correcting token count - local: ${localTokens}, expected: ${expectedRemainingTokens} (${totalPurchased} purchased + 50 free - ${maxUsage} used)`);
+            } else {
+                log(`Token sync: Token count correct at ${expectedRemainingTokens}`);
+            }
+
+            // Update local storage
+            await setStorageValues(updatedData);
+            
+            // Update sync tracking to current count
+            await setStorageValues({ 
+                lastTokenSyncCount: updatedData.paidTokens,
+                lastSyncTime: Date.now() 
             });
             
-            log('Data synced with cloud');
-            await setStorageValues({ lastSyncTime: Date.now() });
+            log('Data synced with cloud - consumption preserved');
             return result;
         }
 
@@ -306,14 +343,22 @@ export async function syncUserDataInternal() {
 
 /**
  * Internal function to handle restore purchases without sending response
+ * Now properly calculates remaining tokens instead of total purchased tokens
  */
 export async function handleRestorePurchasesInternal() {
     try {
         const { authToken } = await getStorageValues(['authToken']);
         if (!authToken) {
+            log('No auth token available for purchase restoration');
             return null;
         }
 
+        // CRITICAL FIX: Sync current local usage to cloud FIRST
+        // This ensures the API has the latest usage count for accurate calculation
+        log('Syncing current local usage to cloud before restore...');
+        await syncUserDataInternal();
+
+        log('Calling restore purchases API...');
         const response = await fetch(`${CONFIG.PAYMENT_API_URL}/user/restore-purchases`, {
             method: 'GET',
             headers: {
@@ -323,15 +368,34 @@ export async function handleRestorePurchasesInternal() {
 
         const result = await response.json();
         if (!response.ok) {
+            logError('Restore purchases API error:', result.error);
             throw new Error(result.error || 'Failed to restore purchases');
         }
 
-        // Update local storage
+        log('Restore purchases API response:', {
+            totalTokens: result.totalTokens,
+            totalPurchased: result.totalPurchased,
+            totalUsed: result.totalUsed,
+            tokensRestored: result.tokensRestored,
+            correctionMade: result.correctionMade,
+            message: result.message
+        });
+
+        // Update local storage with the corrected remaining tokens
         await setStorageValues({
-            paidTokens: result.totalTokens
+            paidTokens: result.totalTokens,
+            lastTokenSyncCount: result.totalTokens
         });
         
-        log('Purchases restored internally');
+        if (result.correctionMade) {
+            if (result.tokensRestored > 0) {
+                log(`Purchases restored internally: ${result.tokensRestored} tokens restored (${result.totalPurchased} purchased + ${result.freeCredits || 50} free - ${result.totalUsed} used = ${result.totalTokens} remaining)`);
+            } else {
+                log(`Token count corrected internally: Set to ${result.totalTokens} tokens (${result.totalPurchased} purchased + ${result.freeCredits || 50} free - ${result.totalUsed} used)`);
+            }
+        } else {
+            log('Purchases checked internally: No correction needed, user has correct balance');
+        }
         return result;
 
     } catch (error) {
@@ -354,6 +418,7 @@ export async function handleStartupSync() {
             if (timeSinceLastSync > CONFIG.SYNC_INTERVAL) {
                 log('Authenticated user detected, syncing tokens...');
                 await syncUserDataInternal();
+                
                 await setStorageValues({ lastSyncTime: now });
             } else {
                 log('Skipping sync, too recent');

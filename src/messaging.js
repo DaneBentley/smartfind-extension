@@ -13,7 +13,7 @@ import {
     handleRestorePurchases, 
     handleGetAuthStatus 
 } from './authentication.js';
-import { handleTokenPurchase, handleTestAPI, handlePurchaseCompleted } from './payment.js';
+import { handleTokenPurchase, handlePurchaseCompleted } from './payment.js';
 import { UNLIMITED_FREE_USERS } from './config.js';
 
 /**
@@ -49,9 +49,7 @@ export function setupMessageListener() {
                 handleAddTokens(request, sendResponse);
                 return true;
             
-            case "addTestTokens":
-                handleAddTestTokens(request, sendResponse);
-                return true;
+
             
             case "getMyUserId":
                 handleGetMyUserId(request, sendResponse);
@@ -93,15 +91,7 @@ export function setupMessageListener() {
                 handlePurchaseCompleted(request, sender, sendResponse);
                 return true;
             
-            case "testAPI":
-                handleTestAPI(request, sender, sendResponse);
-                return true;
-            
-            case "contentScriptReady":
-                // Content script is announcing it's ready - just acknowledge
-                log('Content script ready on tab:', sender.tab?.id || 'unknown');
-                sendResponse({ success: true });
-                return false;
+
                 
             default:
                 logWarning('Unknown message action:', request.action);
@@ -119,13 +109,7 @@ async function handleAddTokens(request, sendResponse) {
     sendResponse({ success: true });
 }
 
-/**
- * Handle adding test tokens (development/testing function)
- */
-async function handleAddTestTokens(request, sendResponse) {
-    await addPaidTokens(1000);
-    sendResponse({ success: true, message: "Added 1000 test tokens" });
-}
+
 
 /**
  * Handle getting current user ID for whitelist purposes
@@ -204,43 +188,44 @@ export async function sendMessageToContentScript(tabId, message) {
  */
 async function injectContentScriptAndRetry(tabId, message) {
     try {
-        // For ES modules, we cannot inject via chrome.scripting.executeScript
-        // The content script should be automatically registered via manifest.json
-        // If it's not loading, it's likely due to a page restriction or timing issue
+        // Inject the content script
+        await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            files: ['content.js']
+        });
         
-        logWarning('Content script not found - may be due to page restrictions or timing');
-        logWarning('ES modules are registered declaratively and cannot be manually injected');
+        // Inject the CSS
+        await chrome.scripting.insertCSS({
+            target: { tabId: tabId },
+            files: ['styles.css']
+        });
         
-        // Try refreshing the tab to trigger content script registration
-        const tab = await chrome.tabs.get(tabId);
-        if (tab.url.startsWith('http://') || tab.url.startsWith('https://')) {
-            // Wait a bit longer for ES modules to load, then retry
-            setTimeout(() => {
-                chrome.tabs.sendMessage(tabId, { action: "ping" }, (response) => {
-                    if (chrome.runtime.lastError) {
-                        logError('Content script still not available after waiting');
-                        logError('Try reloading the page to trigger content script registration');
-                        showErrorBadge(tabId, '!', CONFIG.BADGE_DISPLAY_DURATION);
-                    } else if (response && response.ready) {
-                        log('Content script is now ready, sending message');
+        log('Content script injected successfully');
+        
+        // Wait a moment for the script to initialize, then retry
+        setTimeout(() => {
+            chrome.tabs.sendMessage(tabId, message, (response) => {
+                if (chrome.runtime.lastError) {
+                    logError('Failed to send message after injection:', chrome.runtime.lastError.message);
+                    // Try one more time with a longer delay
+                    setTimeout(() => {
                         chrome.tabs.sendMessage(tabId, message, (response) => {
                             if (chrome.runtime.lastError) {
-                                logError('Error sending message:', chrome.runtime.lastError.message);
+                                logError('Final attempt failed:', chrome.runtime.lastError.message);
                             } else {
-                                log('Message sent successfully');
-                                clearBadge(tabId);
+                                log('Message sent successfully on final attempt');
                             }
                         });
-                    }
-                });
-            }, CONFIG.CONTENT_SCRIPT_INJECTION_DELAY * 2); // Wait longer for ES modules
-        } else {
-            logWarning('Cannot run content script on restricted URL:', tab.url);
-            showErrorBadge(tabId, '!', CONFIG.BADGE_DISPLAY_DURATION);
-        }
+                    }, CONFIG.CONTENT_SCRIPT_RETRY_DELAY);
+                } else {
+                    log('Message sent successfully after injection');
+                }
+            });
+        }, CONFIG.CONTENT_SCRIPT_INJECTION_DELAY);
         
     } catch (injectionError) {
-        logError('Failed to handle content script injection:', injectionError);
+        logError('Failed to inject content script:', injectionError);
+        // Show error badge
         showErrorBadge(tabId, '✗', CONFIG.BADGE_DISPLAY_DURATION);
     }
 } 

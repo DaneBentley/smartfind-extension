@@ -89,44 +89,7 @@ export async function handleTokenPurchase(request, sender, sendResponse) {
     }
 }
 
-/**
- * Handle API connectivity test
- */
-export async function handleTestAPI(request, sender, sendResponse) {
-    try {
-        log('Testing API connectivity...');
-        
-        const response = await fetch(`${CONFIG.PAYMENT_API_URL}/test-payment`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        });
 
-        log('Test API response status:', response.status);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        log('Test API success:', result);
-        
-        sendResponse({ 
-            success: true, 
-            message: 'API connectivity test successful',
-            data: result
-        });
-
-    } catch (error) {
-        logError('API test error:', error);
-        sendResponse({ 
-            success: false, 
-            error: error.message,
-            details: 'Failed to connect to payment API'
-        });
-    }
-}
 
 /**
  * Handle purchase completion notification

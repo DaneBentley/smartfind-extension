@@ -37,9 +37,9 @@
 /* --- Input Field --- */
 #smartfind-input {
     flex: 1 !important;
-    border: none !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
     outline: none !important;
-    background: transparent !important;
+    background: white !important;
     font-size: 14px !important;
     font-weight: 400 !important;
     color: #24292f !important;
@@ -61,24 +61,18 @@
     background: rgba(0, 0, 0, 0.03) !important;
 }
 
-/* Search mode visual indicators */
+/* AI mode - light blue background */
 #smartfind-input.smartfind-ai-mode {
-    border-left: 3px solid #0969da !important;
-    padding-left: 6px !important;
+    background: rgba(9, 105, 218, 0.08) !important;
+    border-color: rgba(9, 105, 218, 0.25) !important;
 }
 
-#smartfind-input.smartfind-keyword-mode {
-    border-left: 3px solid #1a7f37 !important;
-    padding-left: 6px !important;
-}
-
+/* Forced mode - slightly stronger border */
 #smartfind-input.smartfind-forced-mode {
-    box-shadow: 0 0 0 1px rgba(9, 105, 218, 0.3) !important;
+    border-color: rgba(9, 105, 218, 0.35) !important;
 }
 
-#smartfind-input.smartfind-keyword-mode.smartfind-forced-mode {
-    box-shadow: 0 0 0 1px rgba(26, 127, 55, 0.3) !important;
-}
+
 
 /* --- Controls --- */
 .smartfind-controls {
@@ -118,42 +112,54 @@
     border: none !important;
     background: transparent !important;
     cursor: pointer !important;
-    font-size: 14px !important;
-    color: #8b949e !important;
-    padding: 4px !important;
-    border-radius: 6px !important;
+    color: #5f6368 !important;
+    padding: 6px !important;
+    border-radius: 4px !important;
     transition: all 0.15s ease !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    min-width: 28px !important;
+    width: 28px !important;
     height: 28px !important;
-    font-weight: 400 !important;
-    line-height: 1 !important;
+    user-select: none !important;
+}
+
+.smartfind-nav-btn svg,
+.smartfind-close-btn svg {
+    width: 16px !important;
+    height: 16px !important;
+    display: block !important;
+    margin: auto !important;
 }
 
 .smartfind-nav-btn:hover,
 .smartfind-close-btn:hover {
-    background: rgba(0, 0, 0, 0.05) !important;
-    color: #24292f !important;
+    background: rgba(60, 64, 67, 0.08) !important;
+    color: #202124 !important;
 }
 
-.smartfind-nav-btn:active,
-.smartfind-close-btn:active {
-    background: rgba(0, 0, 0, 0.08) !important;
-    transform: translateY(0.5px) !important;
+.smartfind-nav-btn:active {
+    background: rgba(60, 64, 67, 0.12) !important;
 }
 
-.smartfind-close-btn {
-    font-size: 14px !important;
-    font-weight: 400 !important;
-    color: #656d76 !important;
+.smartfind-nav-btn:disabled {
+    color: #dadce0 !important;
+    cursor: default !important;
+    background: transparent !important;
+}
+
+.smartfind-nav-btn:disabled:hover {
+    background: transparent !important;
+    color: #dadce0 !important;
 }
 
 .smartfind-close-btn:hover {
-    background: #ffeaea !important;
-    border-color: #f5c2c7 !important;
-    color: #d1242f !important;
+    background: rgba(234, 67, 53, 0.08) !important;
+    color: #ea4335 !important;
+}
+
+.smartfind-close-btn:active {
+    background: rgba(234, 67, 53, 0.12) !important;
 }
 
 /* --- Status Bar --- */
@@ -322,8 +328,9 @@
     }
     
     #smartfind-input {
-        background: transparent !important;
+        background: rgba(255, 255, 255, 0.05) !important;
         color: #e6edf3 !important;
+        border-color: rgba(255, 255, 255, 0.1) !important;
     }
     
     #smartfind-input::placeholder {
@@ -331,23 +338,52 @@
     }
     
     #smartfind-input:focus {
-        background: rgba(255, 255, 255, 0.03) !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+    }
+    
+    /* AI mode - blue background for dark mode */
+    #smartfind-input.smartfind-ai-mode {
+        background: rgba(58, 130, 247, 0.12) !important;
+        border-color: rgba(58, 130, 247, 0.3) !important;
+    }
+    
+    /* Forced mode - slightly stronger border for dark mode */
+    #smartfind-input.smartfind-forced-mode {
+        border-color: rgba(58, 130, 247, 0.4) !important;
     }
     
     .smartfind-nav-btn,
     .smartfind-close-btn {
-        color: #7d8590 !important;
+        color: #9aa0a6 !important;
     }
     
-    .smartfind-nav-btn:hover,
+    .smartfind-nav-btn:hover {
+        background: rgba(232, 234, 237, 0.08) !important;
+        color: #e8eaed !important;
+    }
+    
+    .smartfind-nav-btn:active {
+        background: rgba(232, 234, 237, 0.12) !important;
+    }
+    
+    .smartfind-nav-btn:disabled {
+        color: #5f6368 !important;
+        cursor: default !important;
+        background: transparent !important;
+    }
+    
+    .smartfind-nav-btn:disabled:hover {
+        background: transparent !important;
+        color: #5f6368 !important;
+    }
+    
     .smartfind-close-btn:hover {
-        background: rgba(255, 255, 255, 0.05) !important;
-        color: #e6edf3 !important;
+        background: rgba(234, 67, 53, 0.12) !important;
+        color: #f28b82 !important;
     }
     
-    .smartfind-nav-btn:active,
     .smartfind-close-btn:active {
-        background: rgba(255, 255, 255, 0.08) !important;
+        background: rgba(234, 67, 53, 0.16) !important;
     }
     
     .smartfind-status {
@@ -419,22 +455,7 @@
         box-shadow: 0 0 0 2px rgba(100, 181, 246, 0.6), inset 0 0 0 1px rgba(25, 118, 210, 0.35) !important;
     }
     
-    /* Dark mode search mode indicators */
-    #smartfind-input.smartfind-ai-mode {
-        border-left: 3px solid #58a6ff !important;
-    }
-    
-    #smartfind-input.smartfind-keyword-mode {
-        border-left: 3px solid #56d364 !important;
-    }
-    
-    #smartfind-input.smartfind-forced-mode {
-        box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.4) !important;
-    }
-    
-    #smartfind-input.smartfind-keyword-mode.smartfind-forced-mode {
-        box-shadow: 0 0 0 1px rgba(86, 211, 100, 0.4) !important;
-    }
+
 }
 
 /* --- Ensure extension styles don't interfere with page --- */
