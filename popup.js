@@ -145,10 +145,9 @@ class PopupManager {
         const numAmount = parseFloat(amount) || 0;
         const tokens = Math.floor(numAmount * 100); // 100 tokens per dollar
         const tokenElement = document.getElementById(`tokens-${type}`);
-        console.log(`SmartFind Popup: Updating ${type} display - Amount: $${numAmount}, Tokens: ${tokens}`);
+        // Update token display calculation
         if (tokenElement) {
             tokenElement.textContent = tokens.toLocaleString();
-            console.log(`SmartFind Popup: Updated ${type} token display to ${tokens.toLocaleString()}`);
         } else {
             console.error(`SmartFind Popup: Could not find token element for ${type}`);
         }

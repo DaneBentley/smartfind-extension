@@ -100,13 +100,22 @@ export function clearBadge(tabId) {
     chrome.action.setBadgeText({ text: '', tabId });
 }
 
+// Production-safe logging
+const isDevelopment = false; // Set to false for production
+
 /**
  * Log with SmartFind prefix
  * @param {string} message - Message to log
  * @param {...any} args - Additional arguments
  */
 export function log(message, ...args) {
-    console.log(`SmartFind: ${message}`, ...args);
+    if (isDevelopment) {
+        console.log(`SmartFind: ${message}`, ...args);
+    }
+    // Always log errors to console for debugging support issues
+    if (message.toLowerCase().includes('error') || message.toLowerCase().includes('failed')) {
+        console.warn(`SmartFind: ${message}`, ...args);
+    }
 }
 
 /**

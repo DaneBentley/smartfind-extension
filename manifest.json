@@ -11,8 +11,6 @@
     "webNavigation"
   ],
   "host_permissions": [
-    "https://smartfind-extension-4yewn6qd1.vercel.app/*",
-    "https://smartfind-extension-sob8c5ha4.vercel.app/*",
     "https://smartfind-api.vercel.app/*",
     "https://accounts.google.com/*",
     "https://*.supabase.co/*"
@@ -44,6 +42,9 @@
       "run_at": "document_end"
     }
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
   "commands": {
     "toggle-smartfind": {
       "suggested_key": {

@@ -1,6 +1,9 @@
 // SmartFind content script
 
-console.log('SmartFind: Content script loaded on:', window.location.href);
+// Production logging configuration
+const DEBUG_MODE = false; // Set to false for production
+const log = DEBUG_MODE ? (...args) => console.log('SmartFind:', ...args) : () => {};
+const logError = (...args) => console.error('SmartFind Error:', ...args);
 
 // Global variables
 let searchBar = null;
@@ -26,7 +29,7 @@ const CONTENT_EXTRACTION_CONFIG = {
 
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log('SmartFind: Content script received message:', request.action);
+    log('Content script received message:', request.action);
     
     if (request.action === "ping") {
         sendResponse({ ready: true });
@@ -46,7 +49,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ success: true });
             }
         } catch (error) {
-            console.error('SmartFind: Error in toggleUI:', error);
+            logError('Error in toggleUI:', error);
             sendResponse({ success: false, error: error.message });
         }
         return true; // Keep the message channel open for async response
