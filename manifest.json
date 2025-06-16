@@ -7,7 +7,8 @@
     "activeTab",
     "scripting",
     "storage",
-    "identity"
+    "identity",
+    "webNavigation"
   ],
   "host_permissions": [
     "https://smartfind-extension-4yewn6qd1.vercel.app/*",
@@ -35,12 +36,13 @@
       ],
       "js": [
         "auth.js",
-        "content.js"
+        "src/content/main.js"
       ],
       "css": [
         "styles.css"
       ],
-      "run_at": "document_end"
+      "run_at": "document_end",
+      "type": "module"
     }
   ],
   "commands": {
