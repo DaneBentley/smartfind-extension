@@ -96,6 +96,12 @@ export function setupMessageListener() {
             case "testAPI":
                 handleTestAPI(request, sender, sendResponse);
                 return true;
+            
+            case "contentScriptReady":
+                // Content script is announcing it's ready - just acknowledge
+                log('Content script ready on tab:', sender.tab?.id || 'unknown');
+                sendResponse({ success: true });
+                return false;
                 
             default:
                 logWarning('Unknown message action:', request.action);
