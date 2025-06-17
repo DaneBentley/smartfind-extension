@@ -9,6 +9,7 @@ const logError = (...args) => console.error('SmartFind Error:', ...args);
 let searchBar = null;
 let searchInput = null;
 let searchResults = null;
+let settingsPanel = null;
 let currentHighlights = [];
 let currentHighlightIndex = -1;
 let totalMatches = 0;
@@ -17,6 +18,14 @@ let isSearchingInProgress = false; // NEW: Flag to prevent re-searches during se
 let lastQuery = '';
 let activeQuery = '';
 let lastMeaningfulQuery = '';
+
+// Settings state
+let searchSettings = {
+    smartSearchEnabled: true,
+    caseSensitive: false,
+    multiTermEnabled: true,
+    regexEnabled: true
+};
 
 // Add to prevent infinite loop from mutations
 let isSmartFindModifyingDOM = false; // Flag to prevent infinite loops from our own DOM changes
@@ -63,6 +72,219 @@ let pendingSearch = {
     content: null
 };
 
+// Google Docs detection and native search fallback
+function isGoogleDocsPage() {
+    const hostname = window.location.hostname;
+    const pathname = window.location.pathname;
+    
+    // Check for Google Workspace domains and paths
+    const googleWorkspaceHosts = [
+        'docs.google.com',
+        'sheets.google.com', 
+        'slides.google.com',
+        'forms.google.com',
+        'drive.google.com'
+    ];
+    
+    const isGoogleWorkspaceHost = googleWorkspaceHosts.includes(hostname);
+    
+    if (!isGoogleWorkspaceHost) {
+        return false;
+    }
+    
+    // Check for specific Google Workspace document paths
+    const workspaceDocumentPaths = [
+        '/document/',     // Google Docs
+        '/presentation/', // Google Slides  
+        '/spreadsheets/', // Google Sheets
+        '/forms/',        // Google Forms
+        '/file/d/',       // Google Drive file viewer
+        '/edit',          // Edit mode indicator
+        '/view'           // View mode indicator
+    ];
+    
+    return workspaceDocumentPaths.some(path => pathname.includes(path)) ||
+           // Also check if we're on a Google Drive page with a document open
+           (hostname === 'drive.google.com' && 
+            (pathname.includes('/file/d/') || 
+             document.querySelector('iframe[src*="docs.google.com"]') ||
+             document.querySelector('iframe[src*="sheets.google.com"]') ||
+             document.querySelector('iframe[src*="slides.google.com"]')));
+}
+
+function triggerNativeBrowserSearch() {
+    log('Triggering native browser search for Google Docs');
+    
+    // Hide our search bar if it exists
+    if (searchBar && searchBar.parentNode) {
+        hideSearchBar();
+    }
+    
+    // Show enhanced notification with instructions
+    showGoogleDocsNotification();
+    
+    // Since we can't reliably trigger the browser's native find programmatically due to security restrictions,
+    // we'll provide clear instructions to the user and try a few methods that might work
+    setTimeout(() => {
+        try {
+            // Method 1: Try window.find (this might work in some browsers)
+            if (window.find) {
+                try {
+                    window.find('');
+                    log('Successfully triggered native search using window.find()');
+                    return;
+                } catch (findError) {
+                    log('window.find() failed:', findError);
+                }
+            }
+            
+            // Method 2: Try execCommand (deprecated but might still work in some browsers)
+            if (document.execCommand) {
+                try {
+                    document.execCommand('find');
+                    log('Successfully triggered native search using execCommand');
+                    return;
+                } catch (execError) {
+                    log('execCommand failed:', execError);
+                }
+            }
+            
+            // Method 3: Focus on the document and try keyboard simulation
+            // This is unlikely to work due to browser security, but worth trying
+            const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac');
+            
+            if (document.body) {
+                document.body.focus();
+            }
+            
+            const eventOptions = {
+                key: 'f',
+                code: 'KeyF',
+                keyCode: 70,
+                which: 70,
+                ctrlKey: !isMac,
+                metaKey: isMac,
+                bubbles: true,
+                cancelable: true,
+                composed: true
+            };
+            
+            // Try dispatching to document
+            try {
+                const keyEvent = new KeyboardEvent('keydown', eventOptions);
+                document.dispatchEvent(keyEvent);
+                log('Attempted keyboard event simulation');
+            } catch (keyError) {
+                log('Keyboard event simulation failed:', keyError);
+            }
+            
+            // If none of the programmatic methods worked, the notification will guide the user
+            log('Native search trigger attempts completed - user notification should provide guidance');
+            
+        } catch (error) {
+            logError('Error in native search trigger attempts:', error);
+        }
+    }, 100);
+}
+
+function showGoogleDocsNotification() {
+    // Determine the app type for a more specific message
+    const hostname = window.location.hostname;
+    let appName = 'Google Workspace';
+    
+    if (hostname.includes('docs.google.com')) appName = 'Google Docs';
+    else if (hostname.includes('sheets.google.com')) appName = 'Google Sheets';
+    else if (hostname.includes('slides.google.com')) appName = 'Google Slides';
+    else if (hostname.includes('forms.google.com')) appName = 'Google Forms';
+    else if (hostname.includes('drive.google.com')) appName = 'Google Drive';
+    
+    // Determine the correct keyboard shortcut for native find
+    const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac');
+    const shortcut = isMac ? 'Cmd+G' : 'Ctrl+G';
+    
+    // Create a temporary notification
+    const notification = document.createElement('div');
+    notification.id = 'smartfind-google-docs-notification';
+    notification.innerHTML = `
+        <div style="
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4285f4;
+            color: white;
+            padding: 16px 20px;
+            border-radius: 8px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 2147483647;
+            animation: smartfind-slide-in 0.3s ease-out;
+            max-width: 320px;
+            cursor: pointer;
+        ">
+            <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 16px; margin-right: 8px;">📄</span>
+                <strong>${appName} detected</strong>
+            </div>
+            <div style="font-size: 12px; opacity: 0.9; line-height: 1.4;">
+                SmartFind works best on regular web pages.<br>
+                Press <strong>${shortcut}</strong> to open native search
+            </div>
+            <div style="font-size: 11px; opacity: 0.7; margin-top: 6px; text-align: center;">
+                Click to dismiss
+            </div>
+        </div>
+    `;
+    
+    // Add animation styles
+    if (!document.getElementById('smartfind-notification-styles')) {
+        const styles = document.createElement('style');
+        styles.id = 'smartfind-notification-styles';
+        styles.textContent = `
+            @keyframes smartfind-slide-in {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes smartfind-slide-out {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(styles);
+    }
+    
+    // Add click-to-dismiss functionality
+    notification.addEventListener('click', () => {
+        removeNotification(notification);
+    });
+    
+    document.body.appendChild(notification);
+    
+    // Remove after 8 seconds (longer than normal since it contains instructions)
+    const autoRemoveTimeout = setTimeout(() => {
+        removeNotification(notification);
+    }, 8000);
+    
+    // Store timeout ID so we can clear it if user clicks
+    notification.autoRemoveTimeout = autoRemoveTimeout;
+}
+
+function removeNotification(notification) {
+    if (notification && notification.parentNode) {
+        // Clear the auto-remove timeout if it exists
+        if (notification.autoRemoveTimeout) {
+            clearTimeout(notification.autoRemoveTimeout);
+        }
+        
+        notification.style.animation = 'smartfind-slide-out 0.3s ease-in';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }
+}
+
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     log('Content script received message:', request.action);
@@ -74,6 +296,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     if (request.action === "toggleUI") {
         try {
+            // Check if this is a Google Docs page
+            if (isGoogleDocsPage()) {
+                log('Google Docs detected, using native search');
+                triggerNativeBrowserSearch();
+                sendResponse({ success: true, usedNativeSearch: true });
+                return;
+            }
+            
             // Ensure DOM is ready before trying to create UI
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', () => {
@@ -698,6 +928,7 @@ function toggleSearchBar() {
 function hideSearchBar() {
     if (searchBar) {
         searchBar.classList.add('smartfind-hidden');
+        hideSettings(); // Hide settings panel when hiding search bar
         clearHighlights();
         
         // CRITICAL: Clear all queries and flags to prevent background re-searches
@@ -752,6 +983,7 @@ function cleanup() {
         searchBar = null;
         searchInput = null;
         searchResults = null;
+        settingsPanel = null;
     }
 }
 
@@ -785,7 +1017,7 @@ function createSearchBar() {
         <div class="smartfind-search-box">
             <input type="text" id="smartfind-input" placeholder="Search..." autocomplete="off" spellcheck="false">
             <div class="smartfind-controls">
-                <span id="smartfind-results" class="smartfind-results">0/0</span>
+                <button id="smartfind-results" class="smartfind-results" title="Click for settings">0/0</button>
                 <button id="smartfind-prev" class="smartfind-nav-btn" title="Previous result (Shift+Enter)">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                         <path stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M12 10L8 6L4 10"/>
@@ -801,6 +1033,33 @@ function createSearchBar() {
                         <path stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M12 4L4 12M4 4L12 12"/>
                     </svg>
                 </button>
+            </div>
+        </div>
+        <div id="smartfind-settings" class="smartfind-settings">
+            <div class="smartfind-settings-header">
+                <span>Search Settings</span>
+            </div>
+            <div class="smartfind-settings-content">
+                <label class="smartfind-setting-item">
+                    <input type="checkbox" id="setting-smart-search" checked>
+                    <span class="smartfind-setting-label">Smart Search (AI)</span>
+                    <span class="smartfind-setting-desc">Use AI for intelligent content discovery</span>
+                </label>
+                <label class="smartfind-setting-item">
+                    <input type="checkbox" id="setting-case-sensitive">
+                    <span class="smartfind-setting-label">Case Sensitive</span>
+                    <span class="smartfind-setting-desc">Match exact letter case</span>
+                </label>
+                <label class="smartfind-setting-item">
+                    <input type="checkbox" id="setting-multi-term" checked>
+                    <span class="smartfind-setting-label">Multi-term Search</span>
+                    <span class="smartfind-setting-desc">Enable comma-separated terms</span>
+                </label>
+                <label class="smartfind-setting-item">
+                    <input type="checkbox" id="setting-regex" checked>
+                    <span class="smartfind-setting-label">Regex Search</span>
+                    <span class="smartfind-setting-desc">Enable pattern matching with *</span>
+                </label>
             </div>
         </div>
         <div id="smartfind-status" class="smartfind-status"></div>
@@ -821,6 +1080,7 @@ function createSearchBar() {
     // Get references to elements
     searchInput = document.getElementById('smartfind-input');
     searchResults = document.getElementById('smartfind-results');
+    settingsPanel = document.getElementById('smartfind-settings');
     
     log(' searchInput element:', searchInput);
     log(' searchResults element:', searchResults);
@@ -834,6 +1094,9 @@ function createSearchBar() {
     
     // Add event listeners
     setupEventListeners();
+    
+    // Load settings
+    loadSettings();
     
     // Show and focus the input
     log(' About to show search bar');
@@ -859,10 +1122,20 @@ function setupEventListeners() {
     document.getElementById('smartfind-next').addEventListener('click', () => navigateResults(1));
     document.getElementById('smartfind-prev').addEventListener('click', () => navigateResults(-1));
     document.getElementById('smartfind-close').addEventListener('click', hideSearchBar);
+    document.getElementById('smartfind-results').addEventListener('click', toggleSettings);
+    
+    // Settings events
+    setupSettingsListeners();
     
     // Global escape key - native Chrome behavior: first escape clears input, second hides
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && searchBar && !searchBar.classList.contains('smartfind-hidden')) {
+            // First check if settings panel is open
+            if (settingsPanel && settingsPanel.classList.contains('smartfind-settings-visible')) {
+                hideSettings();
+                return;
+            }
+            
             if (searchInput.value.trim()) {
                 // First escape: clear input
                 searchInput.value = '';
@@ -871,6 +1144,18 @@ function setupEventListeners() {
             } else {
                 // Second escape: hide search bar
                 hideSearchBar();
+            }
+        }
+    });
+    
+    // Click outside to close settings
+    document.addEventListener('click', (e) => {
+        if (searchBar && !searchBar.classList.contains('smartfind-hidden') && 
+            settingsPanel && settingsPanel.classList.contains('smartfind-settings-visible')) {
+            
+            // Check if click is outside the search bar
+            if (!searchBar.contains(e.target)) {
+                hideSettings();
             }
         }
     });
@@ -1886,7 +2171,8 @@ function searchInDocument(doc, query, processedNodes = new Set()) {
         );
         
         let node;
-        const regex = new RegExp(escapeRegExp(query), 'gi');
+        const flags = searchSettings.caseSensitive ? 'g' : 'gi';
+        const regex = new RegExp(escapeRegExp(query), flags);
         
         while (node = walker.nextNode()) {
             try {
@@ -2626,13 +2912,13 @@ function findTextInSingleNodes(searchText) {
             continue;
         }
         
-        // Look for case-insensitive matches
+        // Look for matches based on case sensitivity setting
         let searchIndex = 0;
-        const searchTextLower = searchText.toLowerCase();
-        const textLower = text.toLowerCase();
+        const searchTextToMatch = searchSettings.caseSensitive ? searchText : searchText.toLowerCase();
+        const textToMatch = searchSettings.caseSensitive ? text : text.toLowerCase();
         
         while (searchIndex < text.length) {
-            const index = textLower.indexOf(searchTextLower, searchIndex);
+            const index = textToMatch.indexOf(searchTextToMatch, searchIndex);
             if (index === -1) break;
             
             // Ensure we don't exceed text bounds
@@ -3435,7 +3721,11 @@ function scrollToHighlight(index) {
 function updateResultsDisplay(current, total) {
     if (searchResults) {
         if (total === 0) {
-            searchResults.style.display = 'none';
+            // Show settings icon when no results
+            searchResults.style.display = 'block';
+            searchResults.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: middle;"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 01-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 01.872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 012.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 012.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 01.872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 01-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 01-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 100-5.86 2.929 2.929 0 000 5.858z"/></svg>';
+            searchResults.title = 'Settings';
+            searchResults.classList.add('smartfind-settings-icon');
         } else {
             searchResults.style.display = 'block';
             let displayText = total === 1 ? '1/1' : `${current}/${total}`;
@@ -3446,11 +3736,15 @@ function updateResultsDisplay(current, total) {
             }
             
             searchResults.textContent = displayText;
+            searchResults.title = 'Click for settings';
+            searchResults.classList.remove('smartfind-settings-icon');
         }
     }
     
     // Note: Removed button disable logic - Chrome allows navigation even with single results
 }
+
+
 
 // Set status message
 function setStatus(message, type = '') {
@@ -3535,22 +3829,153 @@ function showPaymentOption(errorMessage) {
 
 
 
-// Update placeholder text based on input - simplified
+// Update placeholder text based on input and settings
 function updatePlaceholder() {
     if (!searchInput) return;
     
     const value = searchInput.value;
     
+    // Check for force prefixes first
     if (value.startsWith('/')) {
-        searchInput.placeholder = 'AI search...';
+        searchInput.placeholder = searchSettings.smartSearchEnabled ? 'AI search...' : 'Keyword...';
     } else if (value.startsWith("'")) {
         searchInput.placeholder = 'Exact search...';
     } else if (value.startsWith('*')) {
-        searchInput.placeholder = 'Regex search...';
-    } else if (value.includes(',')) {
-        searchInput.placeholder = 'Multi-term search...';
+        searchInput.placeholder = searchSettings.regexEnabled ? 'Regex search...' : 'Keyword...';
+    } else if (value.includes(',') && searchSettings.multiTermEnabled) {
+        searchInput.placeholder = 'Multi-term...';
     } else {
-        searchInput.placeholder = 'Search... (/, \', * for AI, exact, regex)';
+        // Dynamic placeholder based on enabled settings
+        searchInput.placeholder = generateDynamicPlaceholder();
+    }
+}
+
+// Generate placeholder text based on enabled settings
+function generateDynamicPlaceholder() {
+    const features = [];
+    
+    // Add enabled features (keeping it short)
+    if (searchSettings.smartSearchEnabled) features.push('AI');
+    if (searchSettings.multiTermEnabled) features.push('multi');
+    if (searchSettings.regexEnabled) features.push('regex');
+    if (searchSettings.caseSensitive) features.push('case');
+    
+    if (features.length === 0) {
+        return 'Search...';
+    } else if (features.length === 1) {
+        return `Search (${features[0]})`;
+    } else if (features.length === 2) {
+        return `${features[0]}, ${features[1]}`;
+    } else {
+        // Too many features, show count
+        return `Search (+${features.length})`;
+    }
+}
+
+// Toggle settings panel
+function toggleSettings() {
+    if (!settingsPanel) return;
+    
+    const isVisible = settingsPanel.classList.contains('smartfind-settings-visible');
+    
+    if (isVisible) {
+        hideSettings();
+    } else {
+        showSettings();
+    }
+}
+
+// Show settings panel
+function showSettings() {
+    if (!settingsPanel) return;
+    
+    settingsPanel.classList.add('smartfind-settings-visible');
+    loadSettings();
+}
+
+// Hide settings panel
+function hideSettings() {
+    if (!settingsPanel) return;
+    
+    settingsPanel.classList.remove('smartfind-settings-visible');
+}
+
+// Setup settings event listeners
+function setupSettingsListeners() {
+    const settingCheckboxes = [
+        'setting-smart-search',
+        'setting-case-sensitive', 
+        'setting-multi-term',
+        'setting-regex'
+    ];
+    
+    settingCheckboxes.forEach(id => {
+        const checkbox = document.getElementById(id);
+        if (checkbox) {
+            checkbox.addEventListener('change', handleSettingChange);
+        }
+    });
+}
+
+// Handle setting change
+function handleSettingChange(event) {
+    const settingId = event.target.id;
+    const isChecked = event.target.checked;
+    
+    switch (settingId) {
+        case 'setting-smart-search':
+            searchSettings.smartSearchEnabled = isChecked;
+            break;
+        case 'setting-case-sensitive':
+            searchSettings.caseSensitive = isChecked;
+            break;
+        case 'setting-multi-term':
+            searchSettings.multiTermEnabled = isChecked;
+            break;
+        case 'setting-regex':
+            searchSettings.regexEnabled = isChecked;
+            break;
+    }
+    
+    saveSettings();
+    
+    // Update placeholder to reflect new settings
+    updatePlaceholder();
+    
+    // Re-run current search if there's an active query
+    if (activeQuery && activeQuery.length >= 2) {
+        handleSearchForQuery(activeQuery);
+    }
+}
+
+// Load settings from storage
+async function loadSettings() {
+    try {
+        const stored = await chrome.storage.local.get(['smartfindSettings']);
+        if (stored.smartfindSettings) {
+            searchSettings = { ...searchSettings, ...stored.smartfindSettings };
+        }
+        
+        // Update UI checkboxes
+        document.getElementById('setting-smart-search').checked = searchSettings.smartSearchEnabled;
+        document.getElementById('setting-case-sensitive').checked = searchSettings.caseSensitive;
+        document.getElementById('setting-multi-term').checked = searchSettings.multiTermEnabled;
+        document.getElementById('setting-regex').checked = searchSettings.regexEnabled;
+        
+        // Update placeholder to reflect loaded settings
+        updatePlaceholder();
+        
+    } catch (error) {
+        console.warn('SmartFind: Could not load settings:', error);
+    }
+}
+
+// Save settings to storage
+async function saveSettings() {
+    try {
+        await chrome.storage.local.set({ smartfindSettings: searchSettings });
+    } catch (error) {
+        console.warn('SmartFind: Could not save settings:', error);
     }
 }
 
@@ -3612,25 +4037,46 @@ async function handleSearchForQuery(rawQuery) {
             const multiTermQuery = parseMultiTermQuery(query);
             
             if (multiTermQuery.isMultiTerm && searchMode.mode !== 'forceAI') {
-                // Multi-term search - use different colors for each term
-                log(' Detected multi-term search with', multiTermQuery.terms.length, 'terms');
-                setInputStyling('multiterm', false);
-                performMultiTermSearch(multiTermQuery.terms);
+                if (searchSettings.multiTermEnabled) {
+                    // Multi-term search - use different colors for each term
+                    log(' Detected multi-term search with', multiTermQuery.terms.length, 'terms');
+                    setInputStyling('multiterm', false);
+                    performMultiTermSearch(multiTermQuery.terms);
+                } else {
+                    // Multi-term disabled, search for the full query as single term
+                    log(' Multi-term disabled, searching as single term');
+                    resetInputStyling();
+                    performNativeSearch(query);
+                }
             } else if (searchMode.mode === 'forceKeyword') {
                 // Force keyword search with ' prefix
                 log(' Forcing keyword search');
                 setInputStyling('keyword', true);
                 performNativeSearch(query);
             } else if (searchMode.mode === 'regex') {
-                // Force regex search with * prefix
-                log(' Forcing regex search');
-                setInputStyling('regex', true);
-                performRegexSearch(query);
+                if (searchSettings.regexEnabled) {
+                    // Force regex search with * prefix
+                    log(' Forcing regex search');
+                    setInputStyling('regex', true);
+                    performRegexSearch(query);
+                } else {
+                    // Regex disabled, fall back to keyword search
+                    log(' Regex disabled, falling back to keyword search');
+                    setInputStyling('keyword', true);
+                    performNativeSearch(query);
+                }
             } else if (searchMode.mode === 'forceAI') {
-                // Force AI search with / prefix
-                log(' Forcing AI search');
-                setInputStyling('ai', true);
-                await performForcedAISearch(query);
+                if (searchSettings.smartSearchEnabled) {
+                    // Force AI search with / prefix
+                    log(' Forcing AI search');
+                    setInputStyling('ai', true);
+                    await performForcedAISearch(query);
+                } else {
+                    // AI disabled, fall back to keyword search
+                    log(' AI search disabled, falling back to keyword search');
+                    resetInputStyling();
+                    performNativeSearch(query);
+                }
             } else {
                 // Progressive search: keyword first for immediate response, then AI if no matches
                 log(' Starting progressive search - trying keyword first');
@@ -3638,7 +4084,7 @@ async function handleSearchForQuery(rawQuery) {
                 
                 const keywordResults = performNativeSearch(query);
                 
-                if (keywordResults === 0) {
+                if (keywordResults === 0 && searchSettings.smartSearchEnabled) {
                     // No exact matches - schedule AI search after user stops typing
                     log(' No keyword matches, scheduling AI search...');
                     debouncedAISearch(query);

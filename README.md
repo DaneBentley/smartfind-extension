@@ -6,6 +6,7 @@ A Chrome extension that provides intelligent search capabilities using AI-powere
 
 - **Progressive Search**: Starts with keyword search, automatically falls back to AI when no matches found
 - **Force Search Modes**: Use `/` prefix for AI search, `'` prefix for keyword-only search
+- **Google Workspace Integration**: Automatically uses native browser search for Google Docs, Sheets, Slides, and Forms
 - **Cross-Device Sync**: Sign in to sync tokens and purchases across all devices
 - **Flexible Payment**: Pay any amount from $1-$500 (100 tokens per $1)
 - **Visual Feedback**: Clear indicators show which search mode is active
@@ -186,6 +187,7 @@ chrome.runtime.sendMessage({
 - **Normal search**: Tries keyword first, then AI automatically
 - **Force AI**: Use `/` prefix (e.g., `/what is this about`)
 - **Force keyword**: Use `'` prefix (e.g., `'specific term`)
+- **Google Workspace**: SmartFind automatically detects Google Docs, Sheets, Slides, and Forms and uses the browser's native search instead
 
 ### Common Issues
 - **No results**: Try AI search with `/` prefix

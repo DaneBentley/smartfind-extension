@@ -32,7 +32,20 @@ When you type a query, SmartFind automatically:
 - **Example**: `/what is the main point`
 - **Use for**: Natural language queries, summaries, concept searches
 
-### 4. **NEW: Extended AI Search**
+### 4. **NEW: Google Workspace Integration**
+SmartFind automatically detects when you're on Google Workspace applications and uses the browser's native search instead:
+
+- **Supported Apps**: Google Docs, Google Sheets, Google Slides, Google Forms, Google Drive
+- **Automatic Detection**: No setup required - works automatically
+- **Visual Feedback**: Shows a notification when switching to native search
+- **Why**: Google Workspace apps use complex rendering that works better with the browser's built-in search
+
+**When SmartFind detects Google Workspace:**
+- Pressing `Ctrl+F` or `Cmd+F` will trigger the browser's native search
+- A brief notification appears: "📄 SmartFind detected Google Docs - Opening browser's native search instead"
+- No tokens are used since it's using the browser's built-in functionality
+
+### 5. **NEW: Extended AI Search**
 For long pages with lots of content, SmartFind now offers extended search:
 
 - **When**: Automatically detected on pages with >50,000 characters of content

@@ -105,6 +105,8 @@ export function setupMessageListener() {
                 handleShowCreditErrorBadge(request, sender, sendResponse);
                 return true;
             
+
+            
             default:
                 logWarning('Unknown message action:', request.action);
                 sendResponse({ success: false, error: 'Unknown action' });
@@ -194,6 +196,8 @@ function handleShowCreditErrorBadge(request, sender, sendResponse) {
     }
     sendResponse({ success: true });
 }
+
+
 
 /**
  * Sends a message to content script with improved error handling

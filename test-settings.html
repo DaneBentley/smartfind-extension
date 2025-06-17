@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartFind Settings Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .test-content {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .highlight {
+            background-color: yellow;
+            padding: 2px 4px;
+        }
+        .case-sensitive-test {
+            background: #e8f4f8;
+        }
+        .multi-term-test {
+            background: #f0f8e8;
+        }
+        .regex-test {
+            background: #f8f0e8;
+        }
+        .ai-test {
+            background: #f8e8f0;
+        }
+    </style>
+</head>
+<body>
+    <h1>SmartFind Settings Test Page</h1>
+    <p>This page contains various content to test SmartFind's settings functionality. Use Ctrl+Shift+F (or Cmd+Shift+F on Mac) to open SmartFind and test the different search modes and settings.</p>
+    
+    <div class="test-content">
+        <h2>Instructions</h2>
+        <ol>
+            <li>Open SmartFind using the keyboard shortcut</li>
+            <li>Click on the settings icon (⚙) to open the settings panel</li>
+            <li>Toggle different settings on/off</li>
+            <li>Test the various search modes with the content below</li>
+            <li>When search results appear, you can also click the results counter (e.g., "1/5") to access settings</li>
+        </ol>
+    </div>
+
+    <div class="test-section case-sensitive-test">
+        <h3>Case Sensitivity Test</h3>
+        <p>This section contains both <strong>JavaScript</strong> and <strong>javascript</strong> to test case sensitivity.</p>
+        <p>Also includes <em>JAVASCRIPT</em> and <code>Javascript</code> variations.</p>
+        <p>Try searching for "javascript" with case sensitivity on and off.</p>
+    </div>
+
+    <div class="test-section multi-term-test">
+        <h3>Multi-term Search Test</h3>
+        <p>This paragraph contains multiple terms: <span class="highlight">apple</span>, orange, and banana.</p>
+        <p>Another paragraph with <span class="highlight">apple</span> pie and orange juice.</p>
+        <p>Final paragraph with banana bread and apple cider.</p>
+        <p>Try searching for "apple, orange" (comma-separated) with multi-term enabled and disabled.</p>
+    </div>
+
+    <div class="test-section regex-test">
+        <h3>Regex Search Test</h3>
+        <p>Email addresses: john@example.com, mary@test.org, admin@company.net</p>
+        <p>Phone numbers: 123-456-7890, (555) 123-4567, 555.987.6543</p>
+        <p>Dates: 2024-01-15, 01/15/2024, January 15, 2024</p>
+        <p>Try searching for "*@.*\.com" to find .com email addresses, or "*\d{3}-\d{3}-\d{4}" for phone numbers.</p>
+    </div>
+
+    <div class="test-section ai-test">
+        <h3>Smart Search (AI) Test</h3>
+        <p>The artificial intelligence revolution is transforming how we work and live. Machine learning algorithms are becoming more sophisticated, enabling computers to understand natural language and make intelligent decisions.</p>
+        <p>Deep learning neural networks can now process vast amounts of data to identify patterns that humans might miss. This technology powers everything from recommendation systems to autonomous vehicles.</p>
+        <p>Natural language processing allows computers to understand and generate human-like text, making chatbots and virtual assistants more helpful and conversational.</p>
+        <p>Try searching for "/find information about AI and machine learning" to test smart search.</p>
+    </div>
+
+    <div class="test-section">
+        <h3>Combined Test Content</h3>
+        <p>This section combines all test types: JavaScript programming, apple and orange fruits, contact@email.com, phone 123-456-7890, and artificial intelligence concepts.</p>
+        <p>Perfect for testing multiple search modes and settings combinations.</p>
+    </div>
+
+    <div class="test-content">
+        <h2>Search Mode Reference</h2>
+        <ul>
+            <li><strong>/query</strong> - Force AI/Smart Search</li>
+            <li><strong>'query</strong> - Force exact keyword search</li>
+            <li><strong>*pattern</strong> - Force regex search</li>
+            <li><strong>term1, term2</strong> - Multi-term search (if enabled)</li>
+            <li><strong>query</strong> - Progressive search (keyword first, then AI if no results)</li>
+        </ul>
+        
+        <h2>Placeholder Text Examples</h2>
+        <p>The search input placeholder changes based on your settings:</p>
+        <ul>
+            <li><strong>All enabled</strong>: "Search (+4)"</li>
+            <li><strong>AI + Multi-term</strong>: "AI, multi"</li>
+            <li><strong>Only AI</strong>: "Search (AI)"</li>
+            <li><strong>Case sensitive only</strong>: "Search (case)"</li>
+            <li><strong>All disabled</strong>: "Search..."</li>
+        </ul>
+    </div>
+</body>
+</html> 

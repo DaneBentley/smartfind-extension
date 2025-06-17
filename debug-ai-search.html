@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartFind AI Search Debug</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .debug-section {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .instructions {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #0969da;
+        }
+        .error {
+            background: #ffebee;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #f44336;
+            color: #c62828;
+        }
+        .success {
+            background: #e8f5e8;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #4caf50;
+            color: #2e7d32;
+        }
+        code {
+            background: #f6f8fa;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        button {
+            background: #0969da;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0860ca;
+        }
+        #debugOutput {
+            background: #f8f9fa;
+            border: 1px solid #e1e4e8;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>SmartFind AI Search Debug Page</h1>
+    
+    <div class="instructions">
+        <h2>Debug Instructions</h2>
+        <p>This page will help diagnose AI search issues. Follow these steps:</p>
+        <ol>
+            <li>Make sure you're signed in to SmartFind (click the extension icon)</li>
+            <li>Try an AI search with <code>/test query</code> using the SmartFind extension</li>
+            <li>Open browser Developer Tools (F12) and check the Console tab for errors</li>
+            <li>Use the buttons below to test specific components</li>
+        </ol>
+    </div>
+
+    <div class="debug-section">
+        <h2>Test Content for AI Search</h2>
+        <p>This is test content for AI search functionality. The content includes various types of information that the AI should be able to find and extract.</p>
+        
+        <h3>Sample Information</h3>
+        <p>John Smith is the CEO of Example Corp. You can reach him at john.smith@example.com or call (555) 123-4567.</p>
+        
+        <p>The main point of this document is to test AI search functionality. The key takeaway is that AI search should be able to extract specific information from web pages.</p>
+        
+        <h3>Technical Details</h3>
+        <p>The SmartFind extension uses the Cerebras API with the llama3.1-8b model to perform semantic search on web page content.</p>
+        
+        <p>Important dates: The project started on January 15, 2024. The beta release is scheduled for March 2024.</p>
+        
+        <h3>Contact Information</h3>
+        <ul>
+            <li>Support: support@smartfind.com</li>
+            <li>Sales: (555) 987-6543</li>
+            <li>Address: 123 Tech Street, San Francisco, CA 94105</li>
+        </ul>
+    </div>
+
+    <div class="debug-section">
+        <h2>Debug Tools</h2>
+        <button onclick="testExtensionConnection()">Test Extension Connection</button>
+        <button onclick="checkAuthStatus()">Check Authentication</button>
+        <button onclick="checkTokens()">Check Token Count</button>
+        <button onclick="testAISearch()">Test AI Search</button>
+        <button onclick="clearDebugOutput()">Clear Output</button>
+        
+        <h3>Debug Output:</h3>
+        <div id="debugOutput">Click a button above to start debugging...</div>
+    </div>
+
+    <script>
+        function log(message) {
+            const output = document.getElementById('debugOutput');
+            const timestamp = new Date().toLocaleTimeString();
+            output.textContent += `[${timestamp}] ${message}\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clearDebugOutput() {
+            document.getElementById('debugOutput').textContent = '';
+        }
+
+        async function testExtensionConnection() {
+            log('Testing extension connection...');
+            try {
+                if (!chrome || !chrome.runtime) {
+                    log('ERROR: Chrome runtime not available');
+                    return;
+                }
+                
+                chrome.runtime.sendMessage({ action: "ping" }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        log(`ERROR: ${chrome.runtime.lastError.message}`);
+                    } else {
+                        log(`SUCCESS: Extension connected - ${JSON.stringify(response)}`);
+                    }
+                });
+            } catch (error) {
+                log(`ERROR: ${error.message}`);
+            }
+        }
+
+        async function checkAuthStatus() {
+            log('Checking authentication status...');
+            try {
+                chrome.runtime.sendMessage({ action: "getAuthStatus" }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        log(`ERROR: ${chrome.runtime.lastError.message}`);
+                    } else {
+                        log(`Auth Status: ${JSON.stringify(response, null, 2)}`);
+                    }
+                });
+            } catch (error) {
+                log(`ERROR: ${error.message}`);
+            }
+        }
+
+        async function checkTokens() {
+            log('Checking token count...');
+            try {
+                chrome.runtime.sendMessage({ action: "getPaidTokens" }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        log(`ERROR: ${chrome.runtime.lastError.message}`);
+                    } else {
+                        log(`Token Count: ${response}`);
+                    }
+                });
+            } catch (error) {
+                log(`ERROR: ${error.message}`);
+            }
+        }
+
+        async function testAISearch() {
+            log('Testing AI search...');
+            try {
+                const content = document.body.textContent;
+                const query = "main point";
+                
+                log(`Query: "${query}"`);
+                log(`Content length: ${content.length} characters`);
+                
+                chrome.runtime.sendMessage({ 
+                    action: "performAISearch",
+                    query: query,
+                    content: content,
+                    forceAI: true
+                }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        log(`ERROR: ${chrome.runtime.lastError.message}`);
+                    } else {
+                        log(`AI Search Response: ${JSON.stringify(response, null, 2)}`);
+                    }
+                });
+            } catch (error) {
+                log(`ERROR: ${error.message}`);
+            }
+        }
+
+        // Auto-test on page load
+        window.addEventListener('load', () => {
+            log('Page loaded. Ready for debugging.');
+            log('Make sure the SmartFind extension is installed and enabled.');
+        });
+    </script>
+</body>
+</html> 
