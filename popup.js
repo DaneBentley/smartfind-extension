@@ -105,10 +105,10 @@ class PopupManager {
         const authenticatedView = document.getElementById('authenticated-view');
         const unauthenticatedView = document.getElementById('unauthenticated-view');
 
-        console.log('SmartFind: updateUI called - currentUser:', this.currentUser, 'authToken:', this.authToken);
+        // log('updateUI called - currentUser:', this.currentUser, 'authToken:', this.authToken); // Disabled for production
 
         if (this.currentUser && this.authToken) {
-            console.log('SmartFind: Showing authenticated view');
+            // log('Showing authenticated view'); // Disabled for production
             // Show authenticated view
             authenticatedView.classList.remove('hidden');
             unauthenticatedView.classList.add('hidden');
@@ -125,7 +125,7 @@ class PopupManager {
                 avatar.textContent = (this.currentUser.name || 'U').charAt(0).toUpperCase();
             }
         } else {
-            console.log('SmartFind: Showing unauthenticated view');
+            // log('Showing unauthenticated view'); // Disabled for production
             // Show unauthenticated view
             authenticatedView.classList.add('hidden');
             unauthenticatedView.classList.remove('hidden');
@@ -364,13 +364,13 @@ class PopupManager {
     }
 
     async handleSignOut() {
-        console.log('SmartFind: Starting sign out process...');
+        // log('Starting sign out process...'); // Disabled for production
         this.showStatus('Signing out...', 'info');
         this.setLoading(true);
 
         try {
             // Clear ALL user-specific storage to prevent token caching across accounts
-            console.log('SmartFind: Clearing all user storage...');
+            // log('Clearing all user storage...'); // Disabled for production
             await chrome.storage.local.remove([
                 'authToken', 
                 'currentUser',
@@ -386,28 +386,28 @@ class PopupManager {
             
             // Verify storage is cleared
             const storageCheck = await chrome.storage.local.get(['authToken', 'currentUser']);
-            console.log('SmartFind: Storage after clearing:', storageCheck);
+            // log('Storage after clearing:', storageCheck); // Disabled for production
             
             // Clear local state immediately
             this.currentUser = null;
             this.authToken = null;
-            console.log('SmartFind: Local state cleared');
+            // log('Local state cleared'); // Disabled for production
             
             // Send sign out message to backend (but don't wait for it)
-            console.log('SmartFind: Sending sign out message to backend...');
+            // log('Sending sign out message to backend...'); // Disabled for production
             this.sendMessage({ action: "signOut" }).catch(error => {
-                console.log('SmartFind: Backend sign out failed (non-critical):', error);
+                // log('Backend sign out failed (non-critical):', error); // Disabled for production
             });
             
             // Update UI immediately
-            console.log('SmartFind: Updating UI...');
+            // log('Updating UI...'); // Disabled for production
             await this.updateUI();
             
             // Reload stats to show anonymous view
-            console.log('SmartFind: Reloading stats...');
+            // log('Reloading stats...'); // Disabled for production
             await this.loadStats();
             
-            console.log('SmartFind: Sign out completed successfully');
+            // log('Sign out completed successfully'); // Disabled for production
             this.showStatus('Signed out successfully', 'success');
             
             // Auto-hide status after success
@@ -471,7 +471,7 @@ class PopupManager {
         this.setLoading(true);
 
         try {
-            console.log('SmartFind Popup: Sending payment request with amount:', amount);
+            // console.log('SmartFind Popup: Sending payment request with amount:', amount); // Disabled for production
             const response = await this.sendMessage({ 
                 action: "purchaseTokens",
                 amount: amount
@@ -560,14 +560,14 @@ class PopupManager {
                 // Send message to content script
                 chrome.tabs.sendMessage(tabs[0].id, { action: "signInSuccess" }, (response) => {
                     if (chrome.runtime.lastError) {
-                        console.log('SmartFind: Could not notify content script (tab may not have SmartFind active)');
+                        // log('Could not notify content script (tab may not have SmartFind active)'); // Disabled for production
                     } else {
-                        console.log('SmartFind: Notified content script of successful sign-in');
+                        // log('Notified content script of successful sign-in'); // Disabled for production
                     }
                 });
             }
         } catch (error) {
-            console.log('SmartFind: Error notifying content script:', error);
+            // log('Error notifying content script:', error); // Disabled for production
         }
     }
 }

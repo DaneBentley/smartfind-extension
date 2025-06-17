@@ -28,7 +28,7 @@
     <main class="max-w-4xl mx-auto py-16 px-4 sm:px-6 lg:px-8">
         <div class="bg-white rounded-lg shadow px-6 py-8">
             <h1 class="text-3xl font-bold text-gray-900 mb-8">Privacy Policy</h1>
-            <p class="text-sm text-gray-500 mb-6">Last updated: December 2024</p>
+            <p class="text-sm text-gray-500 mb-6">Last updated: January 2025</p>
 
             <div class="bg-blue-50 p-4 rounded-lg mb-6">
                 <p class="text-sm text-gray-700">
@@ -37,107 +37,181 @@
             </div>
 
             <div class="prose prose-blue max-w-none">
+                <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Single Purpose Statement</h2>
+                <p class="text-gray-600 mb-4">
+                    SmartFind's single purpose is to enhance webpage search functionality by providing AI-powered semantic search capabilities alongside traditional keyword search. The extension replaces the browser's default Ctrl+F functionality with intelligent search that can understand natural language queries and find relevant content on web pages.
+                </p>
+
                 <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Information We Collect</h2>
                 <p class="text-gray-600 mb-4">We collect the following types of information:</p>
                 
-                <h3 class="text-lg font-medium text-gray-900 mb-2">Personal Information</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">Personal Information (Optional)</h3>
                 <ul class="list-disc pl-6 space-y-2 text-gray-600 mb-4">
-                    <li>Google account information (email, name) when you sign in</li>
-                    <li>Payment information for Pro subscriptions (processed securely by Stripe)</li>
+                    <li><strong>Google Account Information:</strong> Email and name when you choose to sign in for cross-device sync</li>
+                    <li><strong>Payment Information:</strong> Processed securely by Stripe for token purchases (we do not store payment details)</li>
+                    <li><strong>Account Identifiers:</strong> Anonymous user IDs for tracking usage quotas</li>
+                </ul>
+
+                <h3 class="text-lg font-medium text-gray-900 mb-2">Search Data</h3>
+                <ul class="list-disc pl-6 space-y-2 text-gray-600 mb-4">
+                    <li><strong>Search Queries:</strong> Text you enter in the search field, processed temporarily for AI analysis</li>
+                    <li><strong>Webpage Content:</strong> Text content from the current webpage, sent to AI service only during active searches</li>
+                    <li><strong>Search Results:</strong> Highlighted text matches, stored temporarily in browser memory</li>
                 </ul>
 
                 <h3 class="text-lg font-medium text-gray-900 mb-2">Usage Information</h3>
                 <ul class="list-disc pl-6 space-y-2 text-gray-600 mb-4">
-                    <li>Search queries you submit for AI processing (temporarily processed, not stored)</li>
-                    <li>Usage statistics (number of searches, feature usage) - anonymized</li>
-                    <li>Extension settings and preferences</li>
+                    <li><strong>Usage Statistics:</strong> Number of searches performed, feature usage patterns (anonymized)</li>
+                    <li><strong>Extension Settings:</strong> Your preferences for search modes and display options</li>
+                    <li><strong>Token Usage:</strong> Count of AI searches used for billing and quota management</li>
                 </ul>
 
                 <h3 class="text-lg font-medium text-gray-900 mb-2">Technical Information</h3>
                 <ul class="list-disc pl-6 space-y-2 text-gray-600">
-                    <li>Browser type and version (for compatibility)</li>
-                    <li>Extension version (for support purposes)</li>
-                    <li>Error logs (to improve functionality) - no personal data included</li>
+                    <li><strong>Browser Information:</strong> Chrome version and extension version for compatibility</li>
+                    <li><strong>Error Logs:</strong> Technical errors for debugging (no personal data included)</li>
+                    <li><strong>Performance Metrics:</strong> Search response times and success rates</li>
                 </ul>
 
                 <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">How We Use Your Data</h2>
                 <ul class="list-disc pl-6 space-y-2 text-gray-600">
-                    <li>Provide AI-powered search functionality</li>
-                    <li>Manage your account and subscription</li>
-                    <li>Improve our service and user experience</li>
-                    <li>Communicate with you about updates and support</li>
+                    <li><strong>Primary Function:</strong> Process search queries and webpage content to provide AI-enhanced search results</li>
+                    <li><strong>Account Management:</strong> Manage user accounts and token balances for authenticated users</li>
+                    <li><strong>Service Improvement:</strong> Analyze usage patterns to improve search accuracy and performance</li>
+                    <li><strong>Customer Support:</strong> Respond to user inquiries and technical issues</li>
+                    <li><strong>Billing:</strong> Track token usage for payment processing</li>
                 </ul>
+
+                <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">AI Data Processing</h2>
+                <div class="bg-yellow-50 p-4 rounded-lg mb-4">
+                    <h4 class="font-medium text-gray-900 mb-2">Important: Temporary Processing Only</h4>
+                    <ul class="list-disc pl-6 space-y-2 text-gray-600 text-sm">
+                        <li>Search queries and webpage content are sent to Cerebras AI for processing</li>
+                        <li>Data is processed in real-time and is not stored permanently by the AI service</li>
+                        <li>Processing occurs only when you actively perform a search</li>
+                        <li>No personal information is included in AI processing requests</li>
+                        <li>We do not train AI models on your data</li>
+                    </ul>
+                </div>
 
                 <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Data Security</h2>
                 <p class="text-gray-600 mb-4">
-                    We use industry-standard security measures to protect your data:
+                    We implement industry-standard security measures:
                 </p>
                 <ul class="list-disc pl-6 space-y-2 text-gray-600">
-                    <li>HTTPS encryption for all data transmission</li>
-                    <li>Secure storage with Supabase</li>
-                    <li>No storage of webpage content or sensitive data</li>
-                    <li>Regular security audits and updates</li>
+                    <li><strong>Encryption:</strong> All data transmission uses HTTPS/TLS encryption</li>
+                    <li><strong>Secure Storage:</strong> User data stored with Supabase using enterprise-grade security</li>
+                    <li><strong>Access Controls:</strong> Strict authentication and authorization for data access</li>
+                    <li><strong>Data Minimization:</strong> We collect only data necessary for functionality</li>
+                    <li><strong>Regular Audits:</strong> Periodic security reviews and updates</li>
                 </ul>
 
                 <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Third-Party Services</h2>
-                <p class="text-gray-600 mb-4">We use the following trusted services:</p>
+                <p class="text-gray-600 mb-4">We use these trusted third-party services:</p>
                 <ul class="list-disc pl-6 space-y-2 text-gray-600">
-                    <li><strong>Google OAuth:</strong> For secure authentication</li>
-                    <li><strong>OpenAI:</strong> For AI search processing</li>
-                    <li><strong>Stripe:</strong> For secure payment processing</li>
-                    <li><strong>Supabase:</strong> For secure data storage</li>
+                    <li><strong>Google OAuth:</strong> Optional secure authentication (Google's Privacy Policy applies)</li>
+                    <li><strong>Cerebras AI:</strong> AI processing for search queries (data not stored permanently)</li>
+                    <li><strong>Stripe:</strong> Secure payment processing (Stripe's Privacy Policy applies)</li>
+                    <li><strong>Supabase:</strong> Secure database hosting (Supabase's Privacy Policy applies)</li>
                 </ul>
 
-                <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Your Rights</h2>
+                <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Data Sharing</h2>
+                <p class="text-gray-600 mb-4">
+                    We do not sell, rent, or share your personal data with third parties except:
+                </p>
                 <ul class="list-disc pl-6 space-y-2 text-gray-600">
-                    <li>Access your personal data</li>
-                    <li>Request data deletion</li>
-                    <li>Export your data</li>
-                    <li>Opt out of data collection</li>
+                    <li>With the third-party services listed above, as necessary for functionality</li>
+                    <li>When required by law or legal process</li>
+                    <li>To protect our rights, property, or safety, or that of our users</li>
+                    <li>In connection with a business transfer (with notice to users)</li>
+                </ul>
+
+                <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Your Rights and Choices</h2>
+                <ul class="list-disc pl-6 space-y-2 text-gray-600">
+                    <li><strong>Access:</strong> Request access to your personal data</li>
+                    <li><strong>Correction:</strong> Request correction of inaccurate data</li>
+                    <li><strong>Deletion:</strong> Request deletion of your account and data</li>
+                    <li><strong>Data Export:</strong> Request a copy of your data in a portable format</li>
+                    <li><strong>Opt-out:</strong> Use the extension without creating an account</li>
+                    <li><strong>Withdraw Consent:</strong> Revoke permissions at any time</li>
                 </ul>
 
                 <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Data Retention</h2>
-                <p class="text-gray-600 mb-4">
-                    We retain your data only as long as necessary to provide our services:
-                </p>
                 <ul class="list-disc pl-6 space-y-2 text-gray-600">
-                    <li>Account information: Until you delete your account</li>
-                    <li>Search queries: Not stored permanently - only processed for immediate results</li>
-                    <li>Usage statistics: Anonymized after 12 months</li>
-                    <li>Payment data: Handled by Stripe according to their retention policies</li>
+                    <li><strong>Account Data:</strong> Retained until you delete your account</li>
+                    <li><strong>Search Queries:</strong> Not stored permanently - processed and discarded immediately</li>
+                    <li><strong>Webpage Content:</strong> Never stored - only processed during active searches</li>
+                    <li><strong>Usage Statistics:</strong> Anonymized after 12 months</li>
+                    <li><strong>Payment Records:</strong> Retained per Stripe's policies for legal compliance</li>
+                    <li><strong>Error Logs:</strong> Deleted after 90 days</li>
                 </ul>
 
                 <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Children's Privacy</h2>
                 <p class="text-gray-600 mb-4">
-                    SmartFind is not intended for use by children under 13 years of age. We do not knowingly collect personal information from children under 13. If we become aware that we have collected personal information from a child under 13, we will take steps to delete such information.
+                    SmartFind is not intended for use by children under 13 years of age. We do not knowingly collect personal information from children under 13. If we become aware that we have collected personal information from a child under 13, we will take immediate steps to delete such information and terminate the account.
                 </p>
 
                 <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">International Data Transfers</h2>
                 <p class="text-gray-600 mb-4">
-                    Your data may be transferred to and processed in countries other than your own. We ensure appropriate safeguards are in place to protect your data according to this privacy policy.
+                    Your data may be transferred to and processed in countries other than your own, including the United States. We ensure appropriate safeguards are in place to protect your data according to this privacy policy and applicable data protection laws.
                 </p>
+
+                <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">California Privacy Rights (CCPA)</h2>
+                <p class="text-gray-600 mb-4">
+                    California residents have additional rights under the California Consumer Privacy Act (CCPA):
+                </p>
+                <ul class="list-disc pl-6 space-y-2 text-gray-600">
+                    <li>Right to know what personal information is collected</li>
+                    <li>Right to delete personal information</li>
+                    <li>Right to opt-out of the sale of personal information (we do not sell data)</li>
+                    <li>Right to non-discrimination for exercising privacy rights</li>
+                </ul>
+
+                <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">European Privacy Rights (GDPR)</h2>
+                <p class="text-gray-600 mb-4">
+                    European Union residents have rights under the General Data Protection Regulation (GDPR):
+                </p>
+                <ul class="list-disc pl-6 space-y-2 text-gray-600">
+                    <li>Right to access, rectify, or erase personal data</li>
+                    <li>Right to restrict or object to processing</li>
+                    <li>Right to data portability</li>
+                    <li>Right to withdraw consent</li>
+                    <li>Right to lodge a complaint with supervisory authorities</li>
+                </ul>
 
                 <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Changes to This Policy</h2>
                 <p class="text-gray-600 mb-4">
-                    We may update this privacy policy from time to time. We will notify you of any changes by posting the new policy on this page and updating the "Last updated" date. We encourage you to review this policy periodically.
+                    We may update this privacy policy from time to time to reflect changes in our practices or legal requirements. We will notify you of material changes by:
                 </p>
+                <ul class="list-disc pl-6 space-y-2 text-gray-600">
+                    <li>Posting the updated policy on this page</li>
+                    <li>Updating the "Last updated" date</li>
+                    <li>Sending email notifications for significant changes (if you have an account)</li>
+                    <li>Displaying a notification in the extension for major changes</li>
+                </ul>
 
                 <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Developer Information</h2>
                 <p class="text-gray-600 mb-4">
-                    SmartFind is developed by Dane Bentley, an individual developer. For any questions about this privacy policy or our practices, please contact us at:
+                    SmartFind is developed and maintained by:
                 </p>
                 <div class="bg-gray-50 p-4 rounded-lg">
                     <p class="text-gray-700">
                         <strong>Developer:</strong> Dane Bentley<br>
                         <strong>Email:</strong> <a href="mailto:danebentley2004@gmail.com" class="text-blue-600 hover:text-blue-800">danebentley2004@gmail.com</a><br>
-                        <strong>Website:</strong> <a href="index.html" class="text-blue-600 hover:text-blue-800">SmartFind Extension</a>
+                        <strong>Website:</strong> <a href="index.html" class="text-blue-600 hover:text-blue-800">SmartFind Extension</a><br>
+                        <strong>Support:</strong> <a href="contact.html" class="text-blue-600 hover:text-blue-800">Contact Form</a>
                     </p>
                 </div>
 
                 <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Contact Us</h2>
                 <p class="text-gray-600">
-                    For privacy-related questions, contact us at <a href="contact.html" class="text-blue-600 hover:text-blue-800">our contact page</a> or email us directly at <a href="mailto:danebentley2004@gmail.com" class="text-blue-600 hover:text-blue-800">danebentley2004@gmail.com</a>.
+                    For questions about this privacy policy or to exercise your privacy rights, contact us at:
                 </p>
+                <ul class="list-disc pl-6 space-y-2 text-gray-600 mt-2">
+                    <li>Email: <a href="mailto:danebentley2004@gmail.com" class="text-blue-600 hover:text-blue-800">danebentley2004@gmail.com</a></li>
+                    <li>Contact Form: <a href="contact.html" class="text-blue-600 hover:text-blue-800">Submit a request</a></li>
+                    <li>Response Time: We aim to respond within 48 hours</li>
+                </ul>
             </div>
         </div>
     </main>
@@ -145,7 +219,7 @@
     <footer class="bg-white mt-16">
         <div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
             <div class="text-center">
-                <p class="text-gray-400">&copy; 2024 SmartFind. All rights reserved.</p>
+                <p class="text-gray-400">&copy; 2025 SmartFind. All rights reserved.</p>
             </div>
         </div>
     </footer>

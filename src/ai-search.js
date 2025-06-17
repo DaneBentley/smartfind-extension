@@ -168,7 +168,7 @@ Find and copy exact text from the content above that semantically answers the qu
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: "llama3.1-8b",
+                model: "llama-4-scout-17b-16e-instruct",
                 messages: [
                     {
                         role: "user",

@@ -21,7 +21,7 @@ class AuthService {
     // Google OAuth Sign In
     async signInWithGoogle() {
         try {
-            console.log('SmartFind: Starting Google OAuth...');
+            // log('Starting Google OAuth...'); // Disabled for production
             
             const token = await new Promise((resolve, reject) => {
                 chrome.identity.getAuthToken({ interactive: true }, (token) => {
@@ -107,10 +107,10 @@ class AuthService {
             if (this.currentUser?.authType === 'google' && this.authToken) {
                 try {
                     chrome.identity.removeCachedAuthToken({ token: this.authToken }, () => {
-                        console.log('SmartFind: Google token revoked');
+                        // log('Google token revoked'); // Disabled for production
                     });
                 } catch (error) {
-                    console.log('SmartFind: Could not revoke Google token:', error);
+                    // log('Could not revoke Google token:', error); // Disabled for production
                 }
             }
 
@@ -130,7 +130,7 @@ class AuthService {
             this.authToken = null;
             this.currentUser = null;
 
-            console.log('SmartFind: User signed out');
+            // log('User signed out'); // Disabled for production
 
         } catch (error) {
             console.error('Sign out error:', error);
@@ -168,7 +168,7 @@ class AuthService {
                     lastTokenSyncCount: result.cloudTokens // Initialize sync tracking to current count
                 });
                 
-                console.log('SmartFind: Data synced with cloud');
+                // log('Data synced with cloud'); // Disabled for production
                 return result;
             }
 
@@ -199,9 +199,9 @@ class AuthService {
                 });
                 
                 if (result.tokensRestored > 0) {
-                    console.log(`SmartFind: Restored ${result.tokensRestored} missing tokens`);
+                    // log(`Restored ${result.tokensRestored} missing tokens`); // Disabled for production
                 } else {
-                    console.log('SmartFind: No restoration needed - tokens are up to date');
+                    // log('No restoration needed - tokens are up to date'); // Disabled for production
                 }
                 return result;
             } else {
