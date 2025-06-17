@@ -29,5 +29,5 @@
       "destination": "/api/$1"
     }
   ],
-  "alias": ["smartfind-api.vercel.app", "smartfind-extension-kozhz9ds1.vercel.app"]
+  "alias": ["smartfind-api.vercel.app"]
 } 
