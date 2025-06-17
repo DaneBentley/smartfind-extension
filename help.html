@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Help & FAQ - SmartFind</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-6">
+                <div class="flex items-center">
+                    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.35-4.35"></path>
+                        </svg>
+                    </div>
+                    <a href="index.html" class="text-2xl font-bold text-gray-900">SmartFind</a>
+                </div>
+                <nav class="space-x-6">
+                    <a href="index.html" class="text-gray-600 hover:text-gray-900">Home</a>
+                    <a href="help.html" class="text-blue-600 font-medium">Help</a>
+                    <a href="privacy.html" class="text-gray-600 hover:text-gray-900">Privacy</a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero -->
+    <section class="gradient-bg text-white py-16">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h1 class="text-4xl font-bold mb-4">Help & FAQ</h1>
+            <p class="text-xl opacity-90">Everything you need to know about using SmartFind</p>
+        </div>
+    </section>
+
+    <!-- Content -->
+    <section class="py-16">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            
+            <!-- Getting Started -->
+            <div class="bg-white rounded-xl shadow-lg p-8 mb-8">
+                <h2 class="text-3xl font-bold text-gray-900 mb-6">Getting Started</h2>
+                
+                <div class="space-y-6">
+                    <div>
+                        <h3 class="text-xl font-semibold mb-3">Installation</h3>
+                        <ol class="list-decimal list-inside space-y-2 text-gray-600">
+                            <li>Visit the <a href="https://chrome.google.com/webstore" class="text-blue-600 hover:underline">Chrome Web Store</a></li>
+                            <li>Click "Add to Chrome" to install SmartFind</li>
+                            <li>The extension will be ready to use immediately</li>
+                            <li>Press <kbd class="bg-gray-100 px-2 py-1 rounded text-sm">Ctrl+F</kbd> (or <kbd class="bg-gray-100 px-2 py-1 rounded text-sm">Cmd+F</kbd> on Mac) to activate</li>
+                        </ol>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-xl font-semibold mb-3">First Search</h3>
+                        <p class="text-gray-600 mb-3">Try these examples to get started:</p>
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <div class="bg-blue-50 p-4 rounded-lg">
+                                <div class="font-mono text-blue-600 mb-2">/ Where is the contact info?</div>
+                                <div class="text-sm text-gray-600">AI search for natural questions</div>
+                            </div>
+                            <div class="bg-green-50 p-4 rounded-lg">
+                                <div class="font-mono text-green-600 mb-2">contact, email, phone</div>
+                                <div class="text-sm text-gray-600">Multi-term search with colors</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search Modes -->
+            <div class="bg-white rounded-xl shadow-lg p-8 mb-8">
+                <h2 class="text-3xl font-bold text-gray-900 mb-6">Search Modes</h2>
+                
+                <div class="space-y-8">
+                    <!-- AI Search -->
+                    <div class="border-l-4 border-blue-500 pl-6">
+                        <h3 class="text-xl font-semibold mb-3">AI Search <span class="text-blue-600">(/)</span></h3>
+                        <p class="text-gray-600 mb-4">Ask questions in natural language. Perfect for finding content by meaning rather than exact words.</p>
+                        
+                        <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                            <h4 class="font-medium mb-2">Examples:</h4>
+                            <div class="space-y-2 text-sm">
+                                <div><code class="bg-white px-2 py-1 rounded">/ Where is the pricing information?</code></div>
+                                <div><code class="bg-white px-2 py-1 rounded">/ How do I contact support?</code></div>
+                                <div><code class="bg-white px-2 py-1 rounded">/ What are the system requirements?</code></div>
+                                <div><code class="bg-white px-2 py-1 rounded">/ Find the author bio</code></div>
+                            </div>
+                        </div>
+                        
+                        <div class="text-sm text-blue-600 bg-blue-50 p-3 rounded">
+                            <strong>Cost:</strong> 1 token per AI search • 50 free tokens per month
+                        </div>
+                    </div>
+
+                    <!-- Keyword Search -->
+                    <div class="border-l-4 border-gray-500 pl-6">
+                        <h3 class="text-xl font-semibold mb-3">Keyword Search <span class="text-gray-600">(default)</span></h3>
+                        <p class="text-gray-600 mb-4">Traditional exact keyword matching. Fast and precise for known terms.</p>
+                        
+                        <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                            <h4 class="font-medium mb-2">Examples:</h4>
+                            <div class="space-y-2 text-sm">
+                                <div><code class="bg-white px-2 py-1 rounded">contact</code></div>
+                                <div><code class="bg-white px-2 py-1 rounded">JavaScript</code></div>
+                                <div><code class="bg-white px-2 py-1 rounded">API documentation</code></div>
+                            </div>
+                        </div>
+                        
+                        <div class="text-sm text-green-600 bg-green-50 p-3 rounded">
+                            <strong>Cost:</strong> Always free and unlimited
+                        </div>
+                    </div>
+
+                    <!-- Multi-term Search -->
+                    <div class="border-l-4 border-green-500 pl-6">
+                        <h3 class="text-xl font-semibold mb-3">Multi-term Search <span class="text-green-600">(,)</span></h3>
+                        <p class="text-gray-600 mb-4">Search for multiple terms simultaneously with color-coded highlights.</p>
+                        
+                        <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                            <h4 class="font-medium mb-2">Examples:</h4>
+                            <div class="space-y-2 text-sm">
+                                <div><code class="bg-white px-2 py-1 rounded">price, cost, fee</code></div>
+                                <div><code class="bg-white px-2 py-1 rounded">contact, email, phone, support</code></div>
+                                <div><code class="bg-white px-2 py-1 rounded">JavaScript, Python, React</code></div>
+                            </div>
+                        </div>
+                        
+                        <div class="text-sm text-green-600 bg-green-50 p-3 rounded">
+                            <strong>Cost:</strong> Always free and unlimited
+                        </div>
+                    </div>
+
+                    <!-- Regex Search -->
+                    <div class="border-l-4 border-orange-500 pl-6">
+                        <h3 class="text-xl font-semibold mb-3">Regex Search <span class="text-orange-600">(*)</span></h3>
+                        <p class="text-gray-600 mb-4">Use regular expressions for powerful pattern matching.</p>
+                        
+                        <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                            <h4 class="font-medium mb-2">Examples:</h4>
+                            <div class="space-y-2 text-sm">
+                                <div><code class="bg-white px-2 py-1 rounded">*\d{3}-\d{3}-\d{4}</code> <span class="text-gray-500">// Phone numbers</span></div>
+                                <div><code class="bg-white px-2 py-1 rounded">*[a-z]+@[a-z]+\.[a-z]+</code> <span class="text-gray-500">// Email addresses</span></div>
+                                <div><code class="bg-white px-2 py-1 rounded">*https?://\S+</code> <span class="text-gray-500">// URLs</span></div>
+                                <div><code class="bg-white px-2 py-1 rounded">*\$\d+(\.\d{2})?</code> <span class="text-gray-500">// Prices</span></div>
+                            </div>
+                        </div>
+                        
+                        <div class="text-sm text-green-600 bg-green-50 p-3 rounded">
+                            <strong>Cost:</strong> Always free and unlimited
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation & Controls -->
+            <div class="bg-white rounded-xl shadow-lg p-8 mb-8">
+                <h2 class="text-3xl font-bold text-gray-900 mb-6">Navigation & Controls</h2>
+                
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-xl font-semibold mb-4">Keyboard Shortcuts</h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center">
+                                <span>Activate SmartFind</span>
+                                <kbd class="bg-gray-100 px-3 py-1 rounded text-sm">Ctrl+F</kbd>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span>Next result</span>
+                                <kbd class="bg-gray-100 px-3 py-1 rounded text-sm">Enter</kbd>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span>Previous result</span>
+                                <kbd class="bg-gray-100 px-3 py-1 rounded text-sm">Shift+Enter</kbd>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span>Close SmartFind</span>
+                                <kbd class="bg-gray-100 px-3 py-1 rounded text-sm">Escape</kbd>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span>Open settings</span>
+                                <span class="text-sm text-gray-600">Click results counter</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-xl font-semibold mb-4">Navigation Features</h3>
+                        <div class="space-y-3 text-gray-600">
+                            <div>• Results highlight directly on the page</div>
+                            <div>• Automatic scrolling to current match</div>
+                            <div>• Chrome-style result cycling (1/5, 2/5, etc.)</div>
+                            <div>• Instant highlighting as you type</div>
+                            <div>• Copy all results with context</div>
+                            <div>• Smart cursor-based result ordering</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings -->
+            <div class="bg-white rounded-xl shadow-lg p-8 mb-8">
+                <h2 class="text-3xl font-bold text-gray-900 mb-6">Settings & Customization</h2>
+                
+                <div class="space-y-6">
+                    <div>
+                        <h3 class="text-xl font-semibold mb-3">Available Settings</h3>
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <div class="space-y-4">
+                                <div>
+                                    <h4 class="font-medium text-gray-900">Smart Search (AI)</h4>
+                                    <p class="text-sm text-gray-600">Enable/disable AI-powered search functionality</p>
+                                </div>
+                                <div>
+                                    <h4 class="font-medium text-gray-900">Case Sensitive</h4>
+                                    <p class="text-sm text-gray-600">Match exact letter case in searches</p>
+                                </div>
+                            </div>
+                            <div class="space-y-4">
+                                <div>
+                                    <h4 class="font-medium text-gray-900">Multi-term Search</h4>
+                                    <p class="text-sm text-gray-600">Enable comma-separated term highlighting</p>
+                                </div>
+                                <div>
+                                    <h4 class="font-medium text-gray-900">Regex Search</h4>
+                                    <p class="text-sm text-gray-600">Enable pattern matching with * prefix</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <h4 class="font-medium text-blue-900 mb-2">How to Access Settings</h4>
+                        <ol class="list-decimal list-inside text-sm text-blue-800 space-y-1">
+                            <li>Open SmartFind with Ctrl+F</li>
+                            <li>Click the settings icon (⚙) or results counter</li>
+                            <li>Toggle your preferred settings</li>
+                            <li>Settings are saved automatically</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Token System -->
+            <div class="bg-white rounded-xl shadow-lg p-8 mb-8">
+                <h2 class="text-3xl font-bold text-gray-900 mb-6">Token System & Pricing</h2>
+                
+                <div class="space-y-6">
+                    <div>
+                        <h3 class="text-xl font-semibold mb-3">How Tokens Work</h3>
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <div class="grid md:grid-cols-2 gap-6">
+                                <div>
+                                    <h4 class="font-medium text-green-600 mb-2">Always Free:</h4>
+                                    <ul class="text-sm space-y-1">
+                                        <li>• Keyword searches</li>
+                                        <li>• Multi-term searches</li>
+                                        <li>• Regex searches</li>
+                                        <li>• All navigation features</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <h4 class="font-medium text-blue-600 mb-2">Uses Tokens:</h4>
+                                    <ul class="text-sm space-y-1">
+                                        <li>• AI searches (/ prefix)</li>
+                                        <li>• 1 token = 1 AI search</li>
+                                        <li>• 50 free tokens per month</li>
+                                        <li>• Additional tokens: 100 per $1</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-xl font-semibold mb-3">Purchasing Tokens</h3>
+                        <div class="space-y-3 text-gray-600">
+                            <div>• Sign in to the extension to purchase tokens</div>
+                            <div>• Buy any amount from $1 to $500</div>
+                            <div>• Tokens never expire</div>
+                            <div>• No monthly subscriptions or recurring fees</div>
+                            <div>• Secure payment through Stripe</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Troubleshooting -->
+            <div class="bg-white rounded-xl shadow-lg p-8 mb-8">
+                <h2 class="text-3xl font-bold text-gray-900 mb-6">Troubleshooting</h2>
+                
+                <div class="space-y-6">
+                    <div>
+                        <h3 class="text-xl font-semibold mb-3">Common Issues</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <h4 class="font-medium text-gray-900">SmartFind doesn't activate</h4>
+                                <ul class="text-sm text-gray-600 mt-2 space-y-1 ml-4">
+                                    <li>• Make sure the extension is installed and enabled</li>
+                                    <li>• Try refreshing the page</li>
+                                    <li>• Check if the page allows extensions (some internal pages don't)</li>
+                                    <li>• Try clicking the extension icon in the toolbar</li>
+                                </ul>
+                            </div>
+                            
+                            <div>
+                                <h4 class="font-medium text-gray-900">AI search not working</h4>
+                                <ul class="text-sm text-gray-600 mt-2 space-y-1 ml-4">
+                                    <li>• Check if you have tokens remaining</li>
+                                    <li>• Make sure you're signed in for AI features</li>
+                                    <li>• Verify your query starts with /</li>
+                                    <li>• Try a simpler question first</li>
+                                </ul>
+                            </div>
+                            
+                            <div>
+                                <h4 class="font-medium text-gray-900">Search results not highlighting</h4>
+                                <ul class="text-sm text-gray-600 mt-2 space-y-1 ml-4">
+                                    <li>• Some websites may block styling modifications</li>
+                                    <li>• Try different search terms</li>
+                                    <li>• Check if content is inside iframes</li>
+                                    <li>• Refresh the page and try again</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-xl font-semibold mb-3">Google Workspace Compatibility</h3>
+                        <p class="text-gray-600 mb-3">SmartFind automatically detects Google Docs, Sheets, and Slides:</p>
+                        <div class="bg-yellow-50 p-4 rounded-lg">
+                            <p class="text-sm text-yellow-800">
+                                For Google Workspace apps, SmartFind will show instructions to use the native browser search (Ctrl+F) 
+                                as these applications have special security restrictions.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contact -->
+            <div class="bg-white rounded-xl shadow-lg p-8">
+                <h2 class="text-3xl font-bold text-gray-900 mb-6">Need More Help?</h2>
+                
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-xl font-semibold mb-4">Contact Support</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <strong>Email:</strong> 
+                                <a href="mailto:danebentley2004@gmail.com" class="text-blue-600 hover:underline ml-2">
+                                    danebentley2004@gmail.com
+                                </a>
+                            </div>
+                            <div>
+                                <strong>Response Time:</strong> 
+                                <span class="text-gray-600 ml-2">Usually within 24 hours</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-xl font-semibold mb-4">When Contacting Support</h3>
+                        <div class="text-sm text-gray-600 space-y-2">
+                            <div>• Describe what you were trying to do</div>
+                            <div>• Include the website URL where the issue occurred</div>
+                            <div>• Mention your browser version</div>
+                            <div>• Include any error messages you see</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center">
+                <div class="flex items-center justify-center mb-4">
+                    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.35-4.35"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold">SmartFind</h3>
+                </div>
+                <div class="flex justify-center space-x-6 mb-6">
+                    <a href="index.html" class="hover:text-gray-300 transition-colors">Home</a>
+                    <a href="help.html" class="hover:text-gray-300 transition-colors">Help</a>
+                    <a href="privacy.html" class="hover:text-gray-300 transition-colors">Privacy</a>
+                    <a href="mailto:danebentley2004@gmail.com" class="hover:text-gray-300 transition-colors">Contact</a>
+                </div>
+                <p class="text-gray-400">&copy; 2024 SmartFind. Built with ❤️ for better web search experiences.</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html> 
