@@ -2,7 +2,7 @@
 
 // Production logging configuration
 const DEBUG_MODE = false; // Set to false for production (infinite loop fixed!)
-const log = DEBUG_MODE ? (...args) => log('', ...args) : () => {};
+const log = DEBUG_MODE ? (...args) => console.log('SmartFind:', ...args) : () => {};
 const logError = (...args) => console.error('SmartFind Error:', ...args);
 
 // Global variables
@@ -35,6 +35,10 @@ let isWaitingForExtendedConfirmation = false;
 // AI search debouncing
 let aiSearchTimeout = null;
 let pendingAISearchQuery = null;
+
+// Cursor-based search tracking
+let lastClickPosition = null;
+let userHasClicked = false;
 
 // Enhanced content extraction configuration
 const CONTENT_EXTRACTION_CONFIG = {
@@ -112,6 +116,9 @@ if (chrome.runtime && chrome.runtime.sendMessage) {
 // Initialize enhanced content monitoring
 initializeContentMonitoring();
 
+// Initialize cursor tracking
+initializeCursorTracking();
+
 // Add immediate test for MutationObserver functionality
 setTimeout(() => {
     log('Testing MutationObserver functionality...');
@@ -140,6 +147,198 @@ window.smartfindTest = function() {
 };
 
 // Debug functions disabled to prevent console spam
+
+// Initialize cursor tracking to detect user clicks
+function initializeCursorTracking() {
+    log(' Initializing cursor tracking');
+    
+    // Track clicks on the page to determine search starting position
+    document.addEventListener('click', (event) => {
+        // Don't track clicks on SmartFind elements
+        if (event.target.closest('#smartfind-search-bar, .smartfind-highlight')) {
+            return;
+        }
+        
+        // Store the click position and the element that was clicked
+        lastClickPosition = {
+            x: event.clientX,
+            y: event.clientY,
+            pageX: event.pageX,
+            pageY: event.pageY,
+            element: event.target,
+            timestamp: Date.now()
+        };
+        
+        userHasClicked = true;
+        log(' User clicked at position:', lastClickPosition);
+    }, { passive: true });
+    
+    // Also track when the user scrolls to update the relative position
+    window.addEventListener('scroll', () => {
+        // Update the click position relative to the new scroll position
+        if (lastClickPosition && userHasClicked) {
+            // Keep the click position valid for a reasonable time (30 seconds)
+            const clickAge = Date.now() - lastClickPosition.timestamp;
+            if (clickAge > 30000) {
+                lastClickPosition = null;
+                userHasClicked = false;
+                log(' Click position expired due to age');
+            }
+        }
+    }, { passive: true });
+    
+    log(' Cursor tracking initialized');
+}
+
+// Get the current scroll position and viewport information
+function getViewportInfo() {
+    return {
+        scrollTop: window.pageYOffset || document.documentElement.scrollTop,
+        scrollLeft: window.pageXOffset || document.documentElement.scrollLeft,
+        viewportHeight: window.innerHeight,
+        viewportWidth: window.innerWidth
+    };
+}
+
+// Calculate the distance from a DOM element to the user's last click position
+function calculateDistanceFromCursor(element) {
+    if (!lastClickPosition || !userHasClicked) {
+        // If no click position, use viewport center as reference
+        const viewport = getViewportInfo();
+        const rect = element.getBoundingClientRect();
+        const elementCenter = {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2
+        };
+        const viewportCenter = {
+            x: viewport.viewportWidth / 2,
+            y: viewport.viewportHeight / 2
+        };
+        
+        return Math.sqrt(
+            Math.pow(elementCenter.x - viewportCenter.x, 2) + 
+            Math.pow(elementCenter.y - viewportCenter.y, 2)
+        );
+    }
+    
+    try {
+        const rect = element.getBoundingClientRect();
+        const viewport = getViewportInfo();
+        
+        // Calculate element position relative to the page
+        const elementPageX = rect.left + viewport.scrollLeft;
+        const elementPageY = rect.top + viewport.scrollTop;
+        
+        // Calculate distance from click position
+        const distance = Math.sqrt(
+            Math.pow(elementPageX - lastClickPosition.pageX, 2) + 
+            Math.pow(elementPageY - lastClickPosition.pageY, 2)
+        );
+        
+        return distance;
+    } catch (error) {
+        // If we can't calculate distance, return a large number to deprioritize
+        return 999999;
+    }
+}
+
+// Sort matches by distance from cursor position while preserving quality
+function sortMatchesByDistance(matches) {
+    if (!matches || matches.length === 0) {
+        return matches;
+    }
+    
+    // Add distance information to each match
+    const matchesWithDistance = matches.map(match => {
+        let element = null;
+        
+        // Find the element containing the match
+        if (match.node && match.node.parentElement) {
+            element = match.node.parentElement;
+        } else if (match.element) {
+            element = match.element;
+        }
+        
+        const distance = element ? calculateDistanceFromCursor(element) : 999999;
+        
+        return {
+            ...match,
+            distanceFromCursor: distance
+        };
+    });
+    
+    // For AI searches, balance quality with distance
+    // For keyword searches, prioritize distance more heavily
+    matchesWithDistance.sort((a, b) => {
+        // If this is an AI search with quality scores, consider both quality and distance
+        if (a.score !== undefined && b.score !== undefined) {
+            const aQuality = a.score || 1;
+            const bQuality = b.score || 1;
+            
+            // If quality difference is significant (>0.3), prioritize quality
+            if (Math.abs(aQuality - bQuality) > 0.3) {
+                return bQuality - aQuality; // Higher quality first
+            }
+            
+            // If quality is similar, prioritize distance
+            return a.distanceFromCursor - b.distanceFromCursor;
+        }
+        
+        // For keyword searches or when no quality scores, sort by distance only
+        return a.distanceFromCursor - b.distanceFromCursor;
+    });
+    
+    log(` Sorted ${matches.length} matches by distance from cursor (with quality balance)`);
+    if (userHasClicked && lastClickPosition) {
+        log(' Using click position:', lastClickPosition);
+    } else {
+        log(' Using viewport center as reference');
+    }
+    
+    return matchesWithDistance;
+}
+
+// Find the best starting index based on cursor position
+function findBestStartingIndex(highlights) {
+    if (!highlights || highlights.length === 0) {
+        return 0;
+    }
+    
+    if (!lastClickPosition || !userHasClicked) {
+        // If no click position, start from the first visible result
+        const viewport = getViewportInfo();
+        
+        for (let i = 0; i < highlights.length; i++) {
+            const highlight = highlights[i];
+            const rect = highlight.getBoundingClientRect();
+            
+            // Check if the highlight is in the current viewport
+            if (rect.top >= 0 && rect.top <= viewport.viewportHeight) {
+                log(' Starting from first visible result at index:', i);
+                return i;
+            }
+        }
+        
+        return 0; // Fallback to first result
+    }
+    
+    // Find the highlight closest to the click position
+    let bestIndex = 0;
+    let bestDistance = Infinity;
+    
+    for (let i = 0; i < highlights.length; i++) {
+        const highlight = highlights[i];
+        const distance = calculateDistanceFromCursor(highlight);
+        
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = i;
+        }
+    }
+    
+    log(' Starting from closest result to click at index:', bestIndex, 'distance:', bestDistance);
+    return bestIndex;
+}
 
 // Initialize content monitoring with MutationObserver
 function initializeContentMonitoring() {
@@ -511,6 +710,16 @@ function hideSearchBar() {
             clearTimeout(aiSearchTimeout);
             aiSearchTimeout = null;
         }
+        
+        // Reset cursor tracking when search is complete
+        // Keep the click position for a bit longer in case user searches again soon
+        setTimeout(() => {
+            if (searchBar && searchBar.classList.contains('smartfind-hidden')) {
+                lastClickPosition = null;
+                userHasClicked = false;
+                log(' Reset cursor tracking after search bar hidden');
+            }
+        }, 5000); // Reset after 5 seconds of inactivity
         
     }
 }
@@ -1336,17 +1545,27 @@ function performNativeSearch(query) {
         
         log(' Found', matches.length, 'enhanced native matches');
         
-        // Remove duplicates and sort by position
-        const uniqueMatches = removeDuplicateMatches(matches);
+        // Remove duplicates and sort by distance from cursor
+        let uniqueMatches = removeDuplicateMatches(matches);
+        uniqueMatches = sortMatchesByDistance(uniqueMatches);
         
         // Highlight matches
         highlightMatches(uniqueMatches, 'keyword');
         
-        // Chrome-like behavior: automatically select first result
+        // Start from the result closest to cursor position
         if (uniqueMatches.length > 0) {
-            currentHighlightIndex = 0;
-            scrollToHighlight(0);
-            updateResultsDisplay(1, uniqueMatches.length);
+            currentHighlightIndex = findBestStartingIndex(currentHighlights);
+            scrollToHighlight(currentHighlightIndex);
+            updateResultsDisplay(currentHighlightIndex + 1, uniqueMatches.length);
+            
+            // Show helpful message for cursor-based search (only for first search after click)
+            if (userHasClicked && lastClickPosition && uniqueMatches.length > 1) {
+                const clickAge = Date.now() - lastClickPosition.timestamp;
+                if (clickAge < 2000) { // Only show for recent clicks (within 2 seconds)
+                    setStatus('Starting from your click position ↗', 'info');
+                    setTimeout(() => setStatus(''), 2000); // Clear after 2 seconds
+                }
+            }
         } else {
             updateResultsDisplay(0, 0);
         }
@@ -1625,9 +1844,9 @@ function performAISearch(aiResult) {
         }
     }
     
-    // Remove duplicate matches (same position) and sort by quality
+    // Remove duplicate matches (same position) and sort by distance from cursor (quality is considered within distance sorting)
     allMatches = removeDuplicateMatches(allMatches);
-    allMatches = sortMatchesByQuality(allMatches);
+    allMatches = sortMatchesByDistance(allMatches);
     
     log(' Total matches after processing:', allMatches.length);
     
@@ -1640,10 +1859,20 @@ function performAISearch(aiResult) {
     
     if (allMatches.length > 0) {
         highlightMatches(allMatches, 'ai');
-        // Chrome-like behavior: immediately select first result  
-        currentHighlightIndex = 0;
-        scrollToHighlight(0);
-        updateResultsDisplay(1, allMatches.length);
+        // Start from the result closest to cursor position
+        currentHighlightIndex = findBestStartingIndex(currentHighlights);
+        scrollToHighlight(currentHighlightIndex);
+        updateResultsDisplay(currentHighlightIndex + 1, allMatches.length);
+        
+        // Show helpful message for cursor-based search (only for first search after click)
+        if (userHasClicked && lastClickPosition && allMatches.length > 1) {
+            const clickAge = Date.now() - lastClickPosition.timestamp;
+            if (clickAge < 2000) { // Only show for recent clicks (within 2 seconds)
+                setStatus('Starting from your click position ↗', 'info');
+                setTimeout(() => setStatus(''), 2000); // Clear after 2 seconds
+            }
+        }
+        
         log(` AI search completed - ${aiResults.length} AI results processed, ${allMatches.length} actual highlights found`);
         
         // Track when search completed to prevent immediate re-searches
@@ -2798,7 +3027,14 @@ function updateResultsDisplay(current, total) {
             searchResults.style.display = 'none';
         } else {
             searchResults.style.display = 'block';
-            searchResults.textContent = total === 1 ? '1/1' : `${current}/${total}`;
+            let displayText = total === 1 ? '1/1' : `${current}/${total}`;
+            
+            // Add a small indicator when using cursor-based search
+            if (userHasClicked && lastClickPosition && total > 1) {
+                displayText += ' ↗'; // Small arrow to indicate cursor-based ordering
+            }
+            
+            searchResults.textContent = displayText;
         }
     }
     
