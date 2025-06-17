@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartFind - AI-Enhanced Browser Search</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .feature-card { transition: transform 0.3s ease, box-shadow 0.3s ease; }
+        .feature-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
+        .search-demo { background: linear-gradient(45deg, #f8fafc, #e2e8f0); }
+    </style>
+</head>
+<body class="bg-white">
+    <!-- Header -->
+    <header class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-6">
+                <div class="flex items-center">
+                    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.35-4.35"></path>
+                        </svg>
+                    </div>
+                    <h1 class="text-2xl font-bold text-gray-900">SmartFind</h1>
+                </div>
+                <a href="https://chrome.google.com/webstore" 
+                   class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors">
+                    Add to Chrome
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="gradient-bg text-white py-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h1 class="text-5xl font-bold mb-6">
+                Replace Ctrl+F with<br>
+                <span class="text-yellow-300">AI-Enhanced Search</span>
+            </h1>
+            <p class="text-xl mb-8 max-w-3xl mx-auto opacity-90">
+                Ask natural questions like "Where is the contact info?" or use precise keywords. 
+                Get intelligent highlighting and instant results on any webpage.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                <a href="https://chrome.google.com/webstore" 
+                   class="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
+                    Install Free Extension
+                </a>
+                <p class="text-sm opacity-75">✨ 50 AI searches included</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Search Demo -->
+    <section class="py-16 search-demo">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="bg-white rounded-2xl shadow-xl p-8">
+                <h3 class="text-2xl font-semibold text-center mb-8">See SmartFind in Action</h3>
+                <div class="space-y-6">
+                    <!-- AI Search Example -->
+                    <div class="border-l-4 border-blue-500 pl-6">
+                        <div class="bg-blue-50 rounded-lg p-4 mb-3">
+                            <span class="text-blue-600 font-mono text-sm">/ Where is the pricing information?</span>
+                        </div>
+                        <p class="text-gray-600 text-sm">AI understands context and finds relevant content even when exact words don't match</p>
+                    </div>
+                    
+                    <!-- Multi-term Search Example -->
+                    <div class="border-l-4 border-green-500 pl-6">
+                        <div class="bg-green-50 rounded-lg p-4 mb-3">
+                            <span class="text-green-600 font-mono text-sm">contact, email, support</span>
+                        </div>
+                        <p class="text-gray-600 text-sm">Search multiple terms at once - each highlighted in different colors</p>
+                    </div>
+                    
+                    <!-- Regex Search Example -->
+                    <div class="border-l-4 border-orange-500 pl-6">
+                        <div class="bg-orange-50 rounded-lg p-4 mb-3">
+                            <span class="text-orange-600 font-mono text-sm">*\d{3}-\d{3}-\d{4}</span>
+                        </div>
+                        <p class="text-gray-600 text-sm">Use regex patterns to find phone numbers, emails, or any complex patterns</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="py-20 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold text-gray-900 mb-4">Powerful Search Features</h2>
+                <p class="text-xl text-gray-600">Everything you need to find anything on any webpage</p>
+            </div>
+            
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- AI Search -->
+                <div class="feature-card bg-white p-8 rounded-xl shadow-lg">
+                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-4">AI-Powered Search</h3>
+                    <p class="text-gray-600 mb-4">Ask questions in natural language. Find content by meaning, not just exact words.</p>
+                    <div class="text-sm text-blue-600 font-mono bg-blue-50 p-2 rounded">/ find the author's bio</div>
+                </div>
+
+                <!-- Multi-term Search -->
+                <div class="feature-card bg-white p-8 rounded-xl shadow-lg">
+                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-4">Multi-term Highlighting</h3>
+                    <p class="text-gray-600 mb-4">Search multiple terms simultaneously with color-coded highlights for easy identification.</p>
+                    <div class="text-sm font-mono bg-green-50 p-2 rounded">
+                        <span class="text-yellow-600">price</span>, <span class="text-blue-600">cost</span>, <span class="text-red-600">fee</span>
+                    </div>
+                </div>
+
+                <!-- Regex Search -->
+                <div class="feature-card bg-white p-8 rounded-xl shadow-lg">
+                    <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-4">Regex Pattern Matching</h3>
+                    <p class="text-gray-600 mb-4">Use powerful regular expressions to find emails, phone numbers, or any complex patterns.</p>
+                    <div class="text-sm text-orange-600 font-mono bg-orange-50 p-2 rounded">*[a-z]+@[a-z]+\.[a-z]+</div>
+                </div>
+
+                <!-- Smart Highlighting -->
+                <div class="feature-card bg-white p-8 rounded-xl shadow-lg">
+                    <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-4">Intelligent Highlighting</h3>
+                    <p class="text-gray-600 mb-4">Results are highlighted directly on the page with smart navigation and instant scrolling.</p>
+                    <div class="flex items-center space-x-2 text-sm">
+                        <span class="bg-yellow-200 px-2 py-1 rounded">1/5</span>
+                        <span class="text-gray-500">Navigate with Enter/Shift+Enter</span>
+                    </div>
+                </div>
+
+                <!-- Advanced Settings -->
+                <div class="feature-card bg-white p-8 rounded-xl shadow-lg">
+                    <div class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-4">Customizable Settings</h3>
+                    <p class="text-gray-600 mb-4">Toggle case sensitivity, enable/disable search modes, and customize behavior to your needs.</p>
+                    <div class="space-y-1 text-sm text-gray-500">
+                        <div>✓ Case sensitive matching</div>
+                        <div>✓ Search mode preferences</div>
+                        <div>✓ Keyboard shortcuts</div>
+                    </div>
+                </div>
+
+                <!-- Copy Results -->
+                <div class="feature-card bg-white p-8 rounded-xl shadow-lg">
+                    <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-4">Export Search Results</h3>
+                    <p class="text-gray-600 mb-4">Copy all search results with context to clipboard for easy sharing or documentation.</p>
+                    <div class="text-sm bg-indigo-50 p-2 rounded text-indigo-700">One-click copy with context</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="py-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold text-gray-900 mb-4">Simple Keyboard Shortcuts</h2>
+                <p class="text-xl text-gray-600">Powerful search with intuitive controls</p>
+            </div>
+            
+            <div class="grid md:grid-cols-3 gap-12">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <span class="text-2xl font-bold text-blue-600">/</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-4">AI Search</h3>
+                    <p class="text-gray-600">Start with <code class="bg-gray-100 px-2 py-1 rounded">/</code> to ask questions in natural language</p>
+                    <div class="mt-4 text-sm text-gray-500 italic">"/ Where is the contact information?"</div>
+                </div>
+                
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <span class="text-2xl font-bold text-green-600">,</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-4">Multi-term Search</h3>
+                    <p class="text-gray-600">Separate terms with <code class="bg-gray-100 px-2 py-1 rounded">,</code> for multiple highlights</p>
+                    <div class="mt-4 text-sm text-gray-500 italic">"price, cost, fee"</div>
+                </div>
+                
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <span class="text-2xl font-bold text-orange-600">*</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-4">Regex Search</h3>
+                    <p class="text-gray-600">Start with <code class="bg-gray-100 px-2 py-1 rounded">*</code> for powerful pattern matching</p>
+                    <div class="mt-4 text-sm text-gray-500 italic">"*\d{3}-\d{3}-\d{4}"</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing -->
+    <section class="py-20 bg-gray-50">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold text-gray-900 mb-4">Simple Token-Based Pricing</h2>
+                <p class="text-xl text-gray-600">Pay only for what you use • No subscriptions</p>
+            </div>
+            
+            <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+                <div class="p-8">
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <!-- Free Usage -->
+                        <div class="text-center">
+                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-2xl font-semibold mb-4">Always Free</h3>
+                            <div class="text-4xl font-bold text-green-600 mb-2">50</div>
+                            <p class="text-gray-600 mb-4">AI searches per month</p>
+                            <div class="space-y-2 text-sm text-gray-500">
+                                <div>✓ Unlimited keyword search</div>
+                                <div>✓ Unlimited regex search</div>
+                                <div>✓ Multi-term highlighting</div>
+                                <div>✓ All advanced features</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Token Purchase -->
+                        <div class="text-center">
+                            <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-2xl font-semibold mb-4">Buy More Tokens</h3>
+                            <div class="text-4xl font-bold text-blue-600 mb-2">100</div>
+                            <p class="text-gray-600 mb-4">tokens per $1</p>
+                            <div class="space-y-2 text-sm text-gray-500">
+                                <div>• 1 token = 1 AI search</div>
+                                <div>• Tokens never expire</div>
+                                <div>• Buy any amount ($1-$500)</div>
+                                <div>• No monthly fees or subscriptions</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-8 p-6 bg-blue-50 rounded-xl">
+                        <div class="text-center">
+                            <h4 class="font-semibold text-blue-900 mb-2">How Token Usage Works</h4>
+                            <p class="text-blue-700 text-sm">
+                                • Keyword searches (no prefix): <strong>Always free</strong><br>
+                                • Multi-term searches (comma-separated): <strong>Always free</strong><br>
+                                • Regex searches (*pattern): <strong>Always free</strong><br>
+                                • AI searches (/question): <strong>Uses 1 token each</strong>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-20 gradient-bg text-white">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h2 class="text-4xl font-bold mb-6">Ready to Transform Your Web Search?</h2>
+            <p class="text-xl mb-8 opacity-90">
+                Join thousands of users who've upgraded from Ctrl+F to SmartFind
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                <a href="https://chrome.google.com/webstore" 
+                   class="bg-white text-blue-600 px-8 py-4 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-colors">
+                    Install SmartFind Extension
+                </a>
+                <p class="text-sm opacity-75">Free • 50 AI searches included • No signup required</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid md:grid-cols-3 gap-8">
+                <div>
+                    <div class="flex items-center mb-4">
+                        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <path d="m21 21-4.35-4.35"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-bold">SmartFind</h3>
+                    </div>
+                    <p class="text-gray-400">AI-enhanced search for the modern web. Find anything, anywhere, instantly.</p>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">Features</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li>AI-powered search</li>
+                        <li>Multi-term highlighting</li>
+                        <li>Regex pattern matching</li>
+                        <li>Smart navigation</li>
+                        <li>Export results</li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">Support</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="help.html" class="hover:text-white transition-colors">Help & FAQ</a></li>
+                        <li><a href="privacy.html" class="hover:text-white transition-colors">Privacy Policy</a></li>
+                        <li><a href="mailto:danebentley2004@gmail.com" class="hover:text-white transition-colors">Contact</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
+                <p>&copy; 2024 SmartFind. Built with ❤️ for better web search experiences.</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html> 

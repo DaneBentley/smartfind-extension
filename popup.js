@@ -89,14 +89,14 @@ class PopupManager {
         document.getElementById('help-link').addEventListener('click', (e) => {
             e.preventDefault();
             chrome.tabs.create({ 
-                url: 'https://smartfind-extension-kozhz9ds1.vercel.app/help' 
+                url: 'https://smartfind-extension-kozhz9ds1.vercel.app/help.html' 
             });
         });
 
         document.getElementById('privacy-link').addEventListener('click', (e) => {
             e.preventDefault();
             chrome.tabs.create({ 
-                url: 'https://smartfind-extension-kozhz9ds1.vercel.app/privacy' 
+                url: 'https://smartfind-extension-kozhz9ds1.vercel.app/privacy.html' 
             });
         });
     }
