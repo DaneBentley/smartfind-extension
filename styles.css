@@ -283,6 +283,49 @@
     display: block !important;
 }
 
+/* Copy button styling */
+.smartfind-copy-btn {
+    background: rgba(9, 105, 218, 0.08) !important;
+    border: 1px solid rgba(9, 105, 218, 0.2) !important;
+    border-radius: 6px !important;
+    padding: 6px 12px !important;
+    margin: 8px 16px 4px !important;
+    cursor: pointer !important;
+    color: #0969da !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    transition: all 0.15s ease !important;
+    width: calc(100% - 32px) !important;
+    justify-content: center !important;
+}
+
+.smartfind-copy-btn:hover {
+    background: rgba(9, 105, 218, 0.12) !important;
+    border-color: rgba(9, 105, 218, 0.3) !important;
+    color: #0550ae !important;
+}
+
+.smartfind-copy-btn:active {
+    background: rgba(9, 105, 218, 0.16) !important;
+    transform: translateY(1px) !important;
+}
+
+.smartfind-copy-btn:disabled {
+    background: rgba(0, 0, 0, 0.03) !important;
+    border-color: rgba(0, 0, 0, 0.08) !important;
+    color: #8b949e !important;
+    cursor: not-allowed !important;
+}
+
+.smartfind-copy-btn svg {
+    width: 14px !important;
+    height: 14px !important;
+    flex-shrink: 0 !important;
+}
+
 @keyframes smartfind-settings-slide-down {
     from {
         opacity: 0;
@@ -740,6 +783,29 @@
     .smartfind-results.smartfind-settings-icon:hover {
         color: #58a6ff !important;
         background: rgba(88, 166, 255, 0.12) !important;
+    }
+
+    /* Copy button dark mode */
+    .smartfind-copy-btn {
+        background: rgba(88, 166, 255, 0.12) !important;
+        border-color: rgba(88, 166, 255, 0.3) !important;
+        color: #58a6ff !important;
+    }
+
+    .smartfind-copy-btn:hover {
+        background: rgba(88, 166, 255, 0.16) !important;
+        border-color: rgba(88, 166, 255, 0.4) !important;
+        color: #79c0ff !important;
+    }
+
+    .smartfind-copy-btn:active {
+        background: rgba(88, 166, 255, 0.2) !important;
+    }
+
+    .smartfind-copy-btn:disabled {
+        background: rgba(110, 118, 129, 0.08) !important;
+        border-color: rgba(110, 118, 129, 0.15) !important;
+        color: #8b949e !important;
     }
     
     /* Keyword search highlights - warmer yellow for dark mode */

@@ -1061,6 +1061,13 @@ function createSearchBar() {
                     <span class="smartfind-setting-desc">Enable pattern matching with *</span>
                 </label>
             </div>
+            <button id="smartfind-copy-results" class="smartfind-copy-btn" title="Copy all search results">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M3.75 2.75a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-8.5a.75.75 0 0 1-.75-.75v-8.5zm1.5.75v7h7v-7h-7z"/>
+                    <path d="M2 5.75a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-.75v6.75H10v-.75a.75.75 0 0 1 1.5 0v1.5a.75.75 0 0 1-.75.75H2.75a.75.75 0 0 1-.75-.75V5.75z"/>
+                </svg>
+                Copy All Results
+            </button>
         </div>
         <div id="smartfind-status" class="smartfind-status"></div>
     `;
@@ -2686,6 +2693,60 @@ function searchInIframesRegex(regex, processedNodes) {
     return matches;
 }
 
+// Sort matches by document order (top to bottom, left to right)
+function sortMatchesByDocumentOrder(matches) {
+    if (!matches || matches.length === 0) {
+        return matches;
+    }
+    
+    return matches.sort((a, b) => {
+        // Get the elements containing the matches
+        let elementA = null;
+        let elementB = null;
+        
+        if (a.node && a.node.parentElement) {
+            elementA = a.node.parentElement;
+        } else if (a.element) {
+            elementA = a.element;
+        }
+        
+        if (b.node && b.node.parentElement) {
+            elementB = b.node.parentElement;
+        } else if (b.element) {
+            elementB = b.element;
+        }
+        
+        // If we can't find elements, maintain original order
+        if (!elementA || !elementB) {
+            return 0;
+        }
+        
+        // Use compareDocumentPosition to determine document order
+        const position = elementA.compareDocumentPosition(elementB);
+        
+        if (position & Node.DOCUMENT_POSITION_FOLLOWING) {
+            // elementB comes after elementA in document order
+            return -1;
+        } else if (position & Node.DOCUMENT_POSITION_PRECEDING) {
+            // elementB comes before elementA in document order
+            return 1;
+        } else if (position & Node.DOCUMENT_POSITION_CONTAINS) {
+            // elementB contains elementA
+            return -1;
+        } else if (position & Node.DOCUMENT_POSITION_CONTAINED_BY) {
+            // elementA contains elementB
+            return 1;
+        }
+        
+        // If elements are the same or in same position, sort by text position within element
+        if (a.start !== undefined && b.start !== undefined) {
+            return a.start - b.start;
+        }
+        
+        return 0;
+    });
+}
+
 // Perform AI-enhanced search with improved selectivity
 function performAISearch(aiResult) {
     log(' Performing AI search with result:', aiResult);
@@ -2754,9 +2815,10 @@ function performAISearch(aiResult) {
         }
     }
     
-    // Remove duplicate matches (same position) and sort by distance from cursor (quality is considered within distance sorting)
+    // Remove duplicate matches (same position) and sort in normal document order
     allMatches = removeDuplicateMatches(allMatches);
-    allMatches = sortMatchesByDistance(allMatches);
+    // Sort by document position (normal order) instead of relevance
+    allMatches = sortMatchesByDocumentOrder(allMatches);
     
     log(' Total matches after processing:', allMatches.length);
     
@@ -2769,19 +2831,12 @@ function performAISearch(aiResult) {
     
     if (allMatches.length > 0) {
         highlightMatches(allMatches, 'ai');
-        // Start from the result closest to cursor position
-        currentHighlightIndex = findBestStartingIndex(currentHighlights);
+        // Start from the first result (normal document order)
+        currentHighlightIndex = 0;
         scrollToHighlight(currentHighlightIndex);
         updateResultsDisplay(currentHighlightIndex + 1, allMatches.length);
         
-        // Show helpful message for cursor-based search (only for first search after click)
-        if (userHasClicked && lastClickPosition && allMatches.length > 1) {
-            const clickAge = Date.now() - lastClickPosition.timestamp;
-            if (clickAge < 2000) { // Only show for recent clicks (within 2 seconds)
-                setStatus('Starting from your click position ↗', 'info');
-                setTimeout(() => setStatus(''), 2000); // Clear after 2 seconds
-            }
-        }
+        // AI results are now sorted in normal document order (top to bottom)
         
         log(` AI search completed - ${aiResults.length} AI results processed, ${allMatches.length} actual highlights found`);
         
@@ -3479,8 +3534,97 @@ function calculateMatchScore(aiResult, text) {
 // Find the best matching phrase within a text node
 function findBestMatchingPhrase(aiResult, text) {
     const aiWords = aiResult.toLowerCase().split(/\s+/).filter(word => word.length > 2);
-    const sentences = text.split(/[.!?]+/);
+    const textLower = text.toLowerCase();
+    const aiResultLower = aiResult.toLowerCase();
     
+    // First, try to find the exact AI result as a substring
+    const exactIndex = textLower.indexOf(aiResultLower);
+    if (exactIndex !== -1) {
+        return {
+            start: exactIndex,
+            end: exactIndex + aiResult.length,
+            text: text.substring(exactIndex, exactIndex + aiResult.length)
+        };
+    }
+    
+    // If no exact match, try to find a longer span that includes most of the AI result
+    if (aiWords.length > 0) {
+        const firstWord = aiWords[0];
+        const lastWord = aiWords[aiWords.length - 1];
+        
+        const firstIndex = textLower.indexOf(firstWord);
+        let lastIndex = textLower.lastIndexOf(lastWord);
+        
+        // If we found both words, try to extend the match to include more context
+        if (firstIndex !== -1 && lastIndex !== -1 && lastIndex >= firstIndex) {
+            // Extend the end to include the full word
+            lastIndex = lastIndex + lastWord.length;
+            
+            // Try to extend the match to include complete sentences or natural breaks
+            let extendedStart = firstIndex;
+            let extendedEnd = lastIndex;
+            
+            // Look backward for sentence start or natural break
+            for (let i = firstIndex - 1; i >= 0; i--) {
+                const char = text[i];
+                if (char === '.' || char === '!' || char === '?' || char === '\n') {
+                    extendedStart = i + 1;
+                    break;
+                }
+                // Don't go too far back (max 100 chars)
+                if (firstIndex - i > 100) {
+                    extendedStart = i;
+                    break;
+                }
+            }
+            
+            // Look forward for sentence end or natural break
+            for (let i = lastIndex; i < text.length; i++) {
+                const char = text[i];
+                if (char === '.' || char === '!' || char === '?' || char === '\n') {
+                    extendedEnd = i + 1;
+                    break;
+                }
+                // Don't go too far forward (max 200 chars from original end)
+                if (i - lastIndex > 200) {
+                    extendedEnd = i;
+                    break;
+                }
+            }
+            
+            // Clean up the boundaries (trim whitespace)
+            while (extendedStart < text.length && /\s/.test(text[extendedStart])) {
+                extendedStart++;
+            }
+            while (extendedEnd > extendedStart && /\s/.test(text[extendedEnd - 1])) {
+                extendedEnd--;
+            }
+            
+            const extendedPhrase = text.substring(extendedStart, extendedEnd);
+            
+            // Only use the extended match if it has a good score
+            if (calculateMatchScore(aiResult, extendedPhrase) >= 0.6) {
+                return {
+                    start: extendedStart,
+                    end: extendedEnd,
+                    text: extendedPhrase
+                };
+            }
+            
+            // Fallback to the basic word span
+            const basicPhrase = text.substring(firstIndex, lastIndex);
+            if (calculateMatchScore(aiResult, basicPhrase) >= 0.7) {
+                return {
+                    start: firstIndex,
+                    end: lastIndex,
+                    text: basicPhrase
+                };
+            }
+        }
+    }
+    
+    // If all else fails, try sentence-based matching as a last resort
+    const sentences = text.split(/[.!?]+/);
     let bestMatch = null;
     let bestScore = 0;
     
@@ -3498,29 +3642,6 @@ function findBestMatchingPhrase(aiResult, text) {
                     text: trimmedSentence
                 };
                 bestScore = score;
-            }
-        }
-    }
-    
-    // If no good sentence match, try to find the best phrase
-    if (!bestMatch && aiWords.length > 0) {
-        const textLower = text.toLowerCase();
-        const firstWord = aiWords[0];
-        const lastWord = aiWords[aiWords.length - 1];
-        
-        const firstIndex = textLower.indexOf(firstWord);
-        const lastIndex = textLower.lastIndexOf(lastWord);
-        
-        if (firstIndex !== -1 && lastIndex !== -1 && lastIndex > firstIndex) {
-            const phraseEnd = lastIndex + lastWord.length;
-            const phrase = text.substring(firstIndex, phraseEnd);
-            
-            if (calculateMatchScore(aiResult, phrase) >= 0.7) {
-                bestMatch = {
-                    start: firstIndex,
-                    end: phraseEnd,
-                    text: phrase
-                };
             }
         }
     }
@@ -3961,7 +4082,24 @@ function updateResultsDisplay(current, total) {
         }
     }
     
+    // Update copy button state
+    updateCopyButtonState(total);
+    
     // Note: Removed button disable logic - Chrome allows navigation even with single results
+}
+
+// Update copy button state based on results
+function updateCopyButtonState(total) {
+    const copyButton = document.getElementById('smartfind-copy-results');
+    if (copyButton) {
+        if (total === 0) {
+            copyButton.disabled = true;
+            copyButton.title = 'No results to copy';
+        } else {
+            copyButton.disabled = false;
+            copyButton.title = `Copy all ${total} search results`;
+        }
+    }
 }
 
 
@@ -4135,6 +4273,12 @@ function setupSettingsListeners() {
             checkbox.addEventListener('change', handleSettingChange);
         }
     });
+    
+    // Add event listener for copy button
+    const copyButton = document.getElementById('smartfind-copy-results');
+    if (copyButton) {
+        copyButton.addEventListener('click', copyAllResults);
+    }
 }
 
 // Handle setting change
@@ -4196,6 +4340,157 @@ async function saveSettings() {
         await chrome.storage.local.set({ smartfindSettings: searchSettings });
     } catch (error) {
         console.warn('SmartFind: Could not save settings:', error);
+    }
+}
+
+// Copy all search results to clipboard
+async function copyAllResults() {
+    try {
+        const copyButton = document.getElementById('smartfind-copy-results');
+        
+        // Disable button during operation
+        if (copyButton) {
+            copyButton.disabled = true;
+            copyButton.textContent = 'Copying...';
+        }
+        
+        if (currentHighlights.length === 0) {
+            // No results to copy
+            setStatus('No results to copy', 'warning');
+            setTimeout(() => setStatus(''), 2000);
+            return;
+        }
+        
+        // Extract text from all highlighted results
+        const results = [];
+        let resultNumber = 1;
+        
+        for (const highlight of currentHighlights) {
+            if (highlight && highlight.textContent) {
+                // Get surrounding context for better understanding
+                const context = getHighlightContext(highlight);
+                if (context.trim()) {
+                    results.push(`${resultNumber}. ${context.trim()}`);
+                    resultNumber++;
+                }
+            }
+        }
+        
+        if (results.length === 0) {
+            setStatus('No valid results to copy', 'warning');
+            setTimeout(() => setStatus(''), 2000);
+            return;
+        }
+        
+        // Create the final text to copy
+        const currentQuery = document.getElementById('smartfind-input')?.value || 'search';
+        const timestamp = new Date().toLocaleString();
+        const copyText = `SmartFind Results for "${currentQuery}" (${timestamp})
+Found ${results.length} results:
+
+${results.join('\n\n')}
+
+---
+Generated by SmartFind Extension`;
+        
+        // Copy to clipboard
+        await navigator.clipboard.writeText(copyText);
+        
+        // Show success message
+        setStatus(`Copied ${results.length} results to clipboard`, 'success');
+        setTimeout(() => setStatus(''), 3000);
+        
+        // Optional: Close settings panel after copying
+        hideSettings();
+        
+    } catch (error) {
+        console.error('SmartFind: Error copying results:', error);
+        setStatus('Failed to copy results', 'error');
+        setTimeout(() => setStatus(''), 3000);
+    } finally {
+        // Re-enable button
+        const copyButton = document.getElementById('smartfind-copy-results');
+        if (copyButton) {
+            copyButton.disabled = false;
+            copyButton.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M3.75 2.75a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-8.5a.75.75 0 0 1-.75-.75v-8.5zm1.5.75v7h7v-7h-7z"/>
+                    <path d="M2 5.75a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-.75v6.75H10v-.75a.75.75 0 0 1 1.5 0v1.5a.75.75 0 0 1-.75.75H2.75a.75.75 0 0 1-.75-.75V5.75z"/>
+                </svg>
+                Copy All Results
+            `;
+        }
+    }
+}
+
+// Get context around a highlighted result for better readability
+function getHighlightContext(highlight) {
+    try {
+        // Try to get sentence or paragraph context
+        let contextNode = highlight.parentNode;
+        let contextText = '';
+        
+        // Try to find the containing paragraph or sentence
+        while (contextNode && contextNode !== document.body) {
+            if (contextNode.tagName === 'P' || contextNode.tagName === 'DIV' || 
+                contextNode.tagName === 'SPAN' || contextNode.tagName === 'TD' ||
+                contextNode.tagName === 'LI' || contextNode.tagName === 'H1' ||
+                contextNode.tagName === 'H2' || contextNode.tagName === 'H3' ||
+                contextNode.tagName === 'H4' || contextNode.tagName === 'H5' ||
+                contextNode.tagName === 'H6') {
+                
+                contextText = contextNode.textContent || '';
+                break;
+            }
+            contextNode = contextNode.parentNode;
+        }
+        
+        // If no good container found, use the highlight's immediate parent
+        if (!contextText) {
+            contextText = highlight.parentNode?.textContent || highlight.textContent || '';
+        }
+        
+        // Clean up the text
+        contextText = contextText.replace(/\s+/g, ' ').trim();
+        
+        // If context is too long, try to extract a sentence around the highlight
+        if (contextText.length > 200) {
+            const highlightText = highlight.textContent || '';
+            const highlightIndex = contextText.indexOf(highlightText);
+            
+            if (highlightIndex >= 0) {
+                // Find sentence boundaries around the highlight
+                let start = Math.max(0, highlightIndex - 100);
+                let end = Math.min(contextText.length, highlightIndex + highlightText.length + 100);
+                
+                // Try to find sentence boundaries
+                const beforeText = contextText.substring(0, highlightIndex);
+                const afterText = contextText.substring(highlightIndex + highlightText.length);
+                
+                const sentenceStart = beforeText.lastIndexOf('. ');
+                const sentenceEnd = afterText.indexOf('. ');
+                
+                if (sentenceStart >= 0 && sentenceStart > highlightIndex - 150) {
+                    start = sentenceStart + 2;
+                }
+                
+                if (sentenceEnd >= 0 && sentenceEnd < 150) {
+                    end = highlightIndex + highlightText.length + sentenceEnd + 1;
+                }
+                
+                contextText = contextText.substring(start, end);
+                
+                // Add ellipsis if we truncated
+                if (start > 0) contextText = '...' + contextText;
+                if (end < contextText.length) contextText = contextText + '...';
+            }
+        }
+        
+        return contextText;
+        
+    } catch (error) {
+        // Fallback to just the highlight text
+        return highlight.textContent || '';
     }
 }
 
