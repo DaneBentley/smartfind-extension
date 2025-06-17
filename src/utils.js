@@ -1,6 +1,6 @@
 // utils.js - Utility functions
 
-import { RESTRICTED_URL_PATTERNS, AI_INDICATORS, KEYWORD_INDICATORS } from './config.js';
+import { RESTRICTED_URL_PATTERNS, AI_INDICATORS, KEYWORD_INDICATORS, REGEX_INDICATORS, REGEX_PATTERNS } from './config.js';
 
 /**
  * Checks if a URL is restricted for content script injection
@@ -12,12 +12,91 @@ export function isRestrictedUrl(url) {
 }
 
 /**
+ * Determines if a query should use regex search
+ * @param {string} query The user's search query
+ * @returns {boolean} True if should use regex search
+ */
+export function shouldUseRegex(query) {
+    return REGEX_INDICATORS.some(pattern => pattern.test(query));
+}
+
+/**
+ * Gets the appropriate regex pattern for a query
+ * @param {string} query The user's search query
+ * @returns {string|null} The regex pattern to use, or null if none found
+ */
+export function getRegexPattern(query) {
+    const queryLower = query.toLowerCase().trim();
+    
+    // Email patterns
+    if (/^(emails?|email addresses?|find emails?|show emails?|all emails?)$/i.test(query)) {
+        return REGEX_PATTERNS.email.source;
+    }
+    
+    // Phone patterns
+    if (/^(phones?|phone numbers?|find phones?|show phones?|all phones?|telephone|tel)$/i.test(query)) {
+        return REGEX_PATTERNS.phone.source;
+    }
+    
+    // URL/link patterns
+    if (/^(links?|urls?|websites?|find links?|show links?|all links?)$/i.test(query)) {
+        return REGEX_PATTERNS.url.source;
+    }
+    
+    // Date patterns
+    if (/^(dates?|find dates?|show dates?|all dates?)$/i.test(query)) {
+        return REGEX_PATTERNS.date.source;
+    }
+    
+    // Number/price patterns
+    if (/^(numbers?|find numbers?|show numbers?)$/i.test(query)) {
+        return REGEX_PATTERNS.number.source;
+    }
+    if (/^(prices?|amounts?|costs?)$/i.test(query)) {
+        return REGEX_PATTERNS.price.source;
+    }
+    
+    // Social media handle patterns
+    if (/^(handles?|usernames?|twitter|instagram)$/i.test(query)) {
+        return REGEX_PATTERNS.socialHandle.source;
+    }
+    if (/^@\w+$/.test(query)) {
+        return query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape and use literal match
+    }
+    
+    // IP address patterns
+    if (/^(ips?|ip addresses?)$/i.test(query)) {
+        return REGEX_PATTERNS.ipAddress.source;
+    }
+    
+    // Hashtag patterns
+    if (/^(hashtags?)$/i.test(query)) {
+        return REGEX_PATTERNS.hashtag.source;
+    }
+    if (/^#\w+$/.test(query)) {
+        return query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape and use literal match
+    }
+    
+    // Postal code patterns
+    if (/^(zip codes?|postal codes?|postcodes?)$/i.test(query)) {
+        return REGEX_PATTERNS.zipCode.source;
+    }
+    
+    return null;
+}
+
+/**
  * Determines if a query should use AI or keyword search
  * @param {string} query The user's search query
  * @returns {boolean} True if should use AI, false for keyword search
  */
 export function shouldUseAI(query) {
-    // Check for AI indicators first
+    // First check if it should use regex (regex takes precedence)
+    if (shouldUseRegex(query)) {
+        return false; // Use regex instead of AI
+    }
+    
+    // Check for AI indicators
     const hasAIIndicators = AI_INDICATORS.some(pattern => pattern.test(query));
     
     // If no AI indicators, check if it's a simple keyword

@@ -2038,6 +2038,226 @@ function performNativeSearch(query) {
     }
 }
 
+// Check if query should automatically use regex
+function shouldUseSmartRegex(query) {
+    // Regex pattern indicators - queries that should use regex search automatically
+    const regexIndicators = [
+        // Email searches
+        /^emails?$/i,
+        /^email addresses?$/i,
+        /^find emails?$/i,
+        /^show emails?$/i,
+        /^all emails?$/i,
+        
+        // Phone number searches
+        /^phones?$/i,
+        /^phone numbers?$/i,
+        /^find phones?$/i,
+        /^show phones?$/i,
+        /^all phones?$/i,
+        /^telephone$/i,
+        /^tel$/i,
+        
+        // URL/link searches
+        /^links?$/i,
+        /^urls?$/i,
+        /^websites?$/i,
+        /^find links?$/i,
+        /^show links?$/i,
+        /^all links?$/i,
+        
+        // Date searches
+        /^dates?$/i,
+        /^find dates?$/i,
+        /^show dates?$/i,
+        /^all dates?$/i,
+        
+        // Number searches (when clearly looking for numeric data)
+        /^numbers?$/i,
+        /^find numbers?$/i,
+        /^show numbers?$/i,
+        /^prices?$/i,
+        /^amounts?$/i,
+        /^costs?$/i,
+        
+        // Social media handles
+        /^@\w+$/,
+        /^handles?$/i,
+        /^usernames?$/i,
+        /^twitter$/i,
+        /^instagram$/i,
+        
+        // IP addresses
+        /^ips?$/i,
+        /^ip addresses?$/i,
+        
+        // Hashtags
+        /^#\w+$/,
+        /^hashtags?$/i,
+        
+        // Postal codes
+        /^zip codes?$/i,
+        /^postal codes?$/i,
+        /^postcodes?$/i
+    ];
+    
+    return regexIndicators.some(pattern => pattern.test(query));
+}
+
+// Get appropriate regex pattern for smart queries
+function getSmartRegexPattern(query) {
+    const queryLower = query.toLowerCase().trim();
+    
+    // Email patterns
+    if (/^(emails?|email addresses?|find emails?|show emails?|all emails?)$/i.test(query)) {
+        return '\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b';
+    }
+    
+    // Phone patterns
+    if (/^(phones?|phone numbers?|find phones?|show phones?|all phones?|telephone|tel)$/i.test(query)) {
+        return '(?:\\+?1[-\\.\\s]?)?\\(?[0-9]{3}\\)?[-\\.\\s]?[0-9]{3}[-\\.\\s]?[0-9]{4}\\b';
+    }
+    
+    // URL/link patterns
+    if (/^(links?|urls?|websites?|find links?|show links?|all links?)$/i.test(query)) {
+        return 'https?:\\/\\/[^\\s<>"{}|\\\\^`[\\]]+';
+    }
+    
+    // Date patterns
+    if (/^(dates?|find dates?|show dates?|all dates?)$/i.test(query)) {
+        return '\\b(?:\\d{1,2}[\\/\\-\\.]\\d{1,2}[\\/\\-\\.]\\d{2,4}|\\d{4}[\\/\\-\\.]\\d{1,2}[\\/\\-\\.]\\d{1,2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\s+\\d{1,2},?\\s+\\d{4}|\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\s+\\d{4})\\b';
+    }
+    
+    // Number/price patterns
+    if (/^(numbers?|find numbers?|show numbers?)$/i.test(query)) {
+        return '\\b\\d+(?:\\.\\d+)?\\b';
+    }
+    if (/^(prices?|amounts?|costs?)$/i.test(query)) {
+        return '\\$\\d+(?:\\.\\d{2})?|\\b\\d+(?:\\.\\d{2})?\\s*(?:dollars?|USD|cents?)\\b';
+    }
+    
+    // Social media handle patterns
+    if (/^(handles?|usernames?|twitter|instagram)$/i.test(query)) {
+        return '@[A-Za-z0-9_]+';
+    }
+    if (/^@\w+$/.test(query)) {
+        return query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape and use literal match
+    }
+    
+    // IP address patterns
+    if (/^(ips?|ip addresses?)$/i.test(query)) {
+        return '\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b';
+    }
+    
+    // Hashtag patterns
+    if (/^(hashtags?)$/i.test(query)) {
+        return '#[A-Za-z0-9_]+';
+    }
+    if (/^#\w+$/.test(query)) {
+        return query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape and use literal match
+    }
+    
+    // Postal code patterns
+    if (/^(zip codes?|postal codes?|postcodes?)$/i.test(query)) {
+        return '\\b\\d{5}(?:-\\d{4})?\\b';
+    }
+    
+    return null;
+}
+
+// Perform smart regex search (auto-detects common patterns)
+function performSmartRegexSearch(query) {
+    log('🎯 Performing smart regex search for:', query);
+    
+    const regexPattern = getSmartRegexPattern(query);
+    if (!regexPattern) {
+        log('No smart regex pattern found for query:', query);
+        return performNativeSearch(query); // Fallback to keyword search
+    }
+    
+    log('Using smart regex pattern:', regexPattern);
+    
+    clearHighlights();
+    
+    try {
+        // Create regex from the smart pattern
+        let regex;
+        try {
+            regex = new RegExp(regexPattern, 'gi');
+        } catch (regexError) {
+            logError('Smart regex pattern error:', regexError);
+            return performNativeSearch(query); // Fallback to keyword search
+        }
+        
+        const matches = [];
+        const processedNodes = new Set();
+        
+        // Search in main document
+        matches.push(...searchInDocumentRegex(document, regex, processedNodes));
+        
+        // Search in shadow DOMs
+        matches.push(...searchInShadowDOMsRegex(document, regex, processedNodes));
+        
+        // Search in accessible iframes
+        matches.push(...searchInIframesRegex(regex, processedNodes));
+        
+        log('🎯 Found', matches.length, 'smart regex matches');
+        
+        // Remove duplicates and sort by distance from cursor
+        let uniqueMatches = removeDuplicateMatches(matches);
+        uniqueMatches = sortMatchesByDistance(uniqueMatches);
+        
+        // Highlight matches
+        highlightMatches(uniqueMatches, 'regex');
+        
+        // Start from the result closest to cursor position
+        if (uniqueMatches.length > 0) {
+            currentHighlightIndex = findBestStartingIndex(currentHighlights);
+            scrollToHighlight(currentHighlightIndex);
+            updateResultsDisplay(currentHighlightIndex + 1, uniqueMatches.length);
+            
+            // Show helpful message for smart regex search
+            const patternType = query.toLowerCase().includes('email') ? 'emails' :
+                              query.toLowerCase().includes('phone') ? 'phone numbers' :
+                              query.toLowerCase().includes('link') || query.toLowerCase().includes('url') ? 'links' :
+                              query.toLowerCase().includes('date') ? 'dates' :
+                              query.toLowerCase().includes('price') || query.toLowerCase().includes('cost') || query.toLowerCase().includes('amount') ? 'prices' :
+                              query.toLowerCase().includes('number') ? 'numbers' :
+                              query.toLowerCase().includes('handle') || query.toLowerCase().includes('username') || query.toLowerCase().includes('twitter') || query.toLowerCase().includes('instagram') ? 'social handles' :
+                              query.toLowerCase().includes('ip') ? 'IP addresses' :
+                              query.toLowerCase().includes('hashtag') ? 'hashtags' :
+                              query.toLowerCase().includes('zip') || query.toLowerCase().includes('postal') ? 'postal codes' :
+                              'matches';
+                              
+            setStatus(`Found ${patternType}`, 'info');
+            setTimeout(() => setStatus(''), 3000);
+        } else {
+            updateResultsDisplay(0, 0);
+            const patternType = query.toLowerCase().includes('email') ? 'emails' :
+                              query.toLowerCase().includes('phone') ? 'phone numbers' :
+                              query.toLowerCase().includes('link') || query.toLowerCase().includes('url') ? 'links' :
+                              query.toLowerCase().includes('date') ? 'dates' :
+                              query.toLowerCase().includes('price') || query.toLowerCase().includes('cost') || query.toLowerCase().includes('amount') ? 'prices' :
+                              query.toLowerCase().includes('number') ? 'numbers' :
+                              query.toLowerCase().includes('handle') || query.toLowerCase().includes('username') || query.toLowerCase().includes('twitter') || query.toLowerCase().includes('instagram') ? 'social handles' :
+                              query.toLowerCase().includes('ip') ? 'IP addresses' :
+                              query.toLowerCase().includes('hashtag') ? 'hashtags' :
+                              query.toLowerCase().includes('zip') || query.toLowerCase().includes('postal') ? 'postal codes' :
+                              'matches';
+                              
+            setStatus(`No ${patternType} found`, 'warning');
+        }
+        
+        return uniqueMatches.length;
+        
+    } catch (error) {
+        console.error('SmartFind: Error in smart regex search:', error);
+        setStatus('Smart search error: ' + error.message, 'error');
+        updateResultsDisplay(0, 0);
+        return 0;
+    }
+}
+
 // Perform regex search
 function performRegexSearch(query) {
     log(' Performing regex search for:', query);
@@ -4066,7 +4286,12 @@ async function handleSearchForQuery(rawQuery) {
                     performNativeSearch(query);
                 }
             } else if (searchMode.mode === 'forceAI') {
-                if (searchSettings.smartSearchEnabled) {
+                // Even with forced AI, check if query should use smart regex (regex is better for data patterns)
+                if (shouldUseSmartRegex(query)) {
+                    log(' Forced AI mode, but detected regex pattern query - using smart regex instead');
+                    setInputStyling('regex', false);
+                    performSmartRegexSearch(query);
+                } else if (searchSettings.smartSearchEnabled) {
                     // Force AI search with / prefix
                     log(' Forcing AI search');
                     setInputStyling('ai', true);
@@ -4078,16 +4303,24 @@ async function handleSearchForQuery(rawQuery) {
                     performNativeSearch(query);
                 }
             } else {
-                // Progressive search: keyword first for immediate response, then AI if no matches
-                log(' Starting progressive search - trying keyword first');
-                resetInputStyling();
-                
-                const keywordResults = performNativeSearch(query);
-                
-                if (keywordResults === 0 && searchSettings.smartSearchEnabled) {
-                    // No exact matches - schedule AI search after user stops typing
-                    log(' No keyword matches, scheduling AI search...');
-                    debouncedAISearch(query);
+                // Check if query should use smart regex (auto-detect common patterns)
+                // Smart regex works even if regex setting is disabled, since it's better for data patterns
+                if (shouldUseSmartRegex(query)) {
+                    log(' Auto-detected regex pattern query');
+                    setInputStyling('regex', false);
+                    performSmartRegexSearch(query);
+                } else {
+                    // Progressive search: keyword first for immediate response, then AI if no matches
+                    log(' Starting progressive search - trying keyword first');
+                    resetInputStyling();
+                    
+                    const keywordResults = performNativeSearch(query);
+                    
+                    if (keywordResults === 0 && searchSettings.smartSearchEnabled) {
+                        // No exact matches - schedule AI search after user stops typing
+                        log(' No keyword matches, scheduling AI search...');
+                        debouncedAISearch(query);
+                    }
                 }
             }
         } catch (error) {

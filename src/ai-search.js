@@ -120,8 +120,8 @@ async function callCerebrasAPI(query, content) {
         truncatedContent = beginning + "\n\n[... content truncated ...]\n\n" + ending;
     }
 
-    // Create a prompt that emphasizes exact extraction over summarization
-    const prompt = `You are a text extraction tool. Your ONLY job is to find and copy exact text snippets from the provided content that match the user's query.
+    // Create a prompt that emphasizes exact extraction over summarization, focused on semantic understanding
+    const prompt = `You are a text extraction tool. Your ONLY job is to find and copy exact text snippets from the provided content that semantically match the user's query.
 
 CRITICAL RULES:
 1. COPY text exactly as it appears in the content - NEVER paraphrase, summarize, or rewrite
@@ -131,23 +131,26 @@ CRITICAL RULES:
 5. NEVER include markup like [edit], [update], or Wikipedia formatting
 6. NEVER put quotes around your results
 7. NEVER start results with the user's query
-8. For specific data (names, emails, phones): Return short, precise answers
-9. For concepts/summaries: Find existing sentences or paragraphs that best address the query
-10. If you find multiple relevant sections, separate them with "|||"
-11. If no exact matches exist, return "NO_MATCH_FOUND"
-12. PRESERVE the original capitalization, punctuation, and spacing exactly
+8. Focus on finding relevant text snippets that answer conceptual, analytical, or semantic questions or keywords
+9. If you find multiple relevant sections, separate them with "|||"
+10. If no relevant matches exist, return "NO_MATCH_FOUND"
+11. PRESERVE the original capitalization, punctuation, and spacing exactly
 
-WHAT TO LOOK FOR:
-- For "names" or "people": Find actual person names mentioned in the text
-- For "email": Find email addresses in the text
-- For "phone": Find phone numbers in the text
+FOCUS ON SEMANTIC UNDERSTANDING:
 - For "summary", "tldr", "main point", "conclusion": Find existing sentences/paragraphs that summarize or explain the main ideas
 - For "what is", "how does", "why": Find existing explanations in the text
+- For "about", "regarding", "concerning": Find relevant contextual information
+- For analysis requests: Find existing analytical content
+- For concept explanations: Find existing explanations or definitions
+- For "names" or "people": Find actual person names mentioned in the text (as data extraction)
+
+NOTE: Simple data extraction queries (like standalone "email", "phone", "links") are handled by regex search, so focus on semantic and conceptual queries.
 
 EXAMPLES OF CORRECT BEHAVIOR:
 - Query: "main point" → Find a sentence like "The main argument is that markets facilitate trade" (if it exists in the text)
 - Query: "summary" → Find an existing summary paragraph or concluding statement
-- Query: "names" → "John Smith" ||| "Dr. Sarah Johnson" (only if these names appear in the text)
+- Query: "what is machine learning" → Find existing explanations about machine learning
+- Query: "how does it work" → Find existing explanations of processes or mechanisms
 
 EXAMPLES OF WRONG BEHAVIOR (DO NOT DO THIS):
 - Query: "main point" → "main point" (echoing the query)
@@ -160,7 +163,7 @@ Text Content:
 ${truncatedContent}
 ---
 
-Find and copy exact text from the content above that answers the query (separate multiple results with |||):`;
+Find and copy exact text from the content above that semantically answers the query (separate multiple results with |||):`;
 
     const apiUrl = `${CONFIG.API_BASE_URL}/api/cerebras`;
     
