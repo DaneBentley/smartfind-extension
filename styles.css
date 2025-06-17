@@ -67,6 +67,18 @@
     border-color: rgba(9, 105, 218, 0.25) !important;
 }
 
+/* Multi-term mode - light purple background */
+#smartfind-input.smartfind-multiterm-mode {
+    background: rgba(130, 80, 223, 0.08) !important;
+    border-color: rgba(130, 80, 223, 0.25) !important;
+}
+
+/* Regex mode - light orange background */
+#smartfind-input.smartfind-regex-mode {
+    background: rgba(255, 140, 0, 0.08) !important;
+    border-color: rgba(255, 140, 0, 0.25) !important;
+}
+
 /* Forced mode - slightly stronger border */
 #smartfind-input.smartfind-forced-mode {
     border-color: rgba(9, 105, 218, 0.35) !important;
@@ -221,6 +233,68 @@
     box-shadow: 0 0 0 1px rgba(33, 150, 243, 0.4) !important;
 }
 
+/* Regex search highlights - orange */
+.smartfind-regex-highlight {
+    background-color: rgba(255, 140, 0, 0.3) !important;
+    color: inherit !important;
+    box-shadow: 0 0 0 1px rgba(255, 140, 0, 0.4) !important;
+}
+
+/* Multi-term highlights - 8 different colors */
+.smartfind-multiterm-highlight.smartfind-multiterm-0 {
+    background-color: rgba(255, 193, 7, 0.4) !important; /* Yellow */
+    color: inherit !important;
+    box-shadow: 0 0 0 1px rgba(255, 193, 7, 0.5) !important;
+}
+
+.smartfind-multiterm-highlight.smartfind-multiterm-1 {
+    background-color: rgba(40, 167, 69, 0.4) !important; /* Green */
+    color: inherit !important;
+    box-shadow: 0 0 0 1px rgba(40, 167, 69, 0.5) !important;
+}
+
+.smartfind-multiterm-highlight.smartfind-multiterm-2 {
+    background-color: rgba(255, 99, 132, 0.4) !important; /* Pink */
+    color: inherit !important;
+    box-shadow: 0 0 0 1px rgba(255, 99, 132, 0.5) !important;
+}
+
+.smartfind-multiterm-highlight.smartfind-multiterm-3 {
+    background-color: rgba(54, 162, 235, 0.4) !important; /* Blue */
+    color: inherit !important;
+    box-shadow: 0 0 0 1px rgba(54, 162, 235, 0.5) !important;
+}
+
+.smartfind-multiterm-highlight.smartfind-multiterm-4 {
+    background-color: rgba(255, 159, 64, 0.4) !important; /* Orange */
+    color: inherit !important;
+    box-shadow: 0 0 0 1px rgba(255, 159, 64, 0.5) !important;
+}
+
+.smartfind-multiterm-highlight.smartfind-multiterm-5 {
+    background-color: rgba(153, 102, 255, 0.4) !important; /* Purple */
+    color: inherit !important;
+    box-shadow: 0 0 0 1px rgba(153, 102, 255, 0.5) !important;
+}
+
+.smartfind-multiterm-highlight.smartfind-multiterm-6 {
+    background-color: rgba(255, 205, 86, 0.4) !important; /* Light Orange */
+    color: inherit !important;
+    box-shadow: 0 0 0 1px rgba(255, 205, 86, 0.5) !important;
+}
+
+.smartfind-multiterm-highlight.smartfind-multiterm-7 {
+    background-color: rgba(75, 192, 192, 0.4) !important; /* Teal */
+    color: inherit !important;
+    box-shadow: 0 0 0 1px rgba(75, 192, 192, 0.5) !important;
+}
+
+/* Current multi-term highlight - more prominent */
+.smartfind-multiterm-highlight.smartfind-current {
+    z-index: 1000000 !important;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3) !important;
+}
+
 /* Current highlight - more prominent */
 .smartfind-highlight.smartfind-current {
     z-index: 1000000 !important;
@@ -236,6 +310,12 @@
 .smartfind-ai-highlight.smartfind-current {
     background-color: rgba(33, 150, 243, 0.5) !important;
     box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.6) !important;
+}
+
+/* Current regex highlight */
+.smartfind-regex-highlight.smartfind-current {
+    background-color: rgba(255, 140, 0, 0.5) !important;
+    box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.6) !important;
 }
 
 /* Cross-node highlights - slightly different styling to indicate they span multiple elements */
@@ -267,6 +347,10 @@
     text-decoration-color: rgba(33, 150, 243, 0.8) !important;
 }
 
+.smartfind-interactive-highlight.smartfind-regex-highlight {
+    text-decoration-color: rgba(255, 140, 0, 0.8) !important;
+}
+
 .smartfind-interactive-highlight.smartfind-current {
     text-decoration-thickness: 3px !important;
     text-decoration-color: rgba(255, 235, 59, 1.0) !important;
@@ -274,6 +358,52 @@
 
 .smartfind-interactive-highlight.smartfind-ai-highlight.smartfind-current {
     text-decoration-color: rgba(33, 150, 243, 1.0) !important;
+}
+
+.smartfind-interactive-highlight.smartfind-regex-highlight.smartfind-current {
+    text-decoration-color: rgba(255, 140, 0, 1.0) !important;
+}
+
+/* Multi-term interactive highlights for light mode */
+.smartfind-interactive-highlight.smartfind-multiterm-highlight {
+    background-color: transparent !important;
+    text-decoration: underline !important;
+    text-decoration-thickness: 2px !important;
+    text-underline-offset: 2px !important;
+    box-shadow: none !important;
+    color: inherit !important;
+}
+
+.smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-0 {
+    text-decoration-color: rgba(255, 193, 7, 0.8) !important;
+}
+
+.smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-1 {
+    text-decoration-color: rgba(40, 167, 69, 0.8) !important;
+}
+
+.smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-2 {
+    text-decoration-color: rgba(255, 99, 132, 0.8) !important;
+}
+
+.smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-3 {
+    text-decoration-color: rgba(54, 162, 235, 0.8) !important;
+}
+
+.smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-4 {
+    text-decoration-color: rgba(255, 159, 64, 0.8) !important;
+}
+
+.smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-5 {
+    text-decoration-color: rgba(153, 102, 255, 0.8) !important;
+}
+
+.smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-6 {
+    text-decoration-color: rgba(255, 205, 86, 0.8) !important;
+}
+
+.smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-7 {
+    text-decoration-color: rgba(75, 192, 192, 0.8) !important;
 }
 
 .smartfind-keyword-highlight.smartfind-cross-node {
@@ -286,6 +416,11 @@
     box-shadow: 0 0 0 1px rgba(33, 150, 243, 0.5), inset 0 0 0 1px rgba(25, 118, 210, 0.3) !important;
 }
 
+.smartfind-regex-highlight.smartfind-cross-node {
+    background-color: rgba(255, 140, 0, 0.35) !important;
+    box-shadow: 0 0 0 1px rgba(255, 140, 0, 0.5), inset 0 0 0 1px rgba(255, 111, 0, 0.3) !important;
+}
+
 .smartfind-keyword-highlight.smartfind-cross-node.smartfind-current {
     background-color: rgba(255, 235, 59, 0.6) !important;
     box-shadow: 0 0 0 2px rgba(255, 235, 59, 0.7), inset 0 0 0 1px rgba(255, 193, 7, 0.4) !important;
@@ -294,6 +429,11 @@
 .smartfind-ai-highlight.smartfind-cross-node.smartfind-current {
     background-color: rgba(33, 150, 243, 0.6) !important;
     box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.7), inset 0 0 0 1px rgba(25, 118, 210, 0.4) !important;
+}
+
+.smartfind-regex-highlight.smartfind-cross-node.smartfind-current {
+    background-color: rgba(255, 140, 0, 0.6) !important;
+    box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.7), inset 0 0 0 1px rgba(255, 111, 0, 0.4) !important;
 }
 
 /* --- Animation for smooth highlighting --- */
@@ -368,6 +508,18 @@
         border-color: rgba(58, 130, 247, 0.3) !important;
     }
     
+        /* Multi-term mode - purple background for dark mode */
+    #smartfind-input.smartfind-multiterm-mode {
+        background: rgba(168, 85, 247, 0.12) !important;
+        border-color: rgba(168, 85, 247, 0.3) !important;
+    }
+
+    /* Regex mode - orange background for dark mode */
+    #smartfind-input.smartfind-regex-mode {
+        background: rgba(255, 140, 0, 0.12) !important;
+        border-color: rgba(255, 140, 0, 0.3) !important;
+    }
+
     /* Forced mode - slightly stronger border for dark mode */
     #smartfind-input.smartfind-forced-mode {
         border-color: rgba(58, 130, 247, 0.4) !important;
@@ -431,6 +583,53 @@
         background-color: rgba(100, 181, 246, 0.25) !important;
         box-shadow: 0 0 0 1px rgba(100, 181, 246, 0.35) !important;
     }
+
+    /* Regex search highlights - lighter orange for dark mode */
+    .smartfind-regex-highlight {
+        background-color: rgba(255, 183, 77, 0.25) !important;
+        box-shadow: 0 0 0 1px rgba(255, 183, 77, 0.35) !important;
+    }
+    
+    /* Multi-term highlights - adjusted for dark mode */
+    .smartfind-multiterm-highlight.smartfind-multiterm-0 {
+        background-color: rgba(255, 213, 79, 0.3) !important; /* Yellow */
+        box-shadow: 0 0 0 1px rgba(255, 213, 79, 0.4) !important;
+    }
+    
+    .smartfind-multiterm-highlight.smartfind-multiterm-1 {
+        background-color: rgba(76, 175, 80, 0.3) !important; /* Green */
+        box-shadow: 0 0 0 1px rgba(76, 175, 80, 0.4) !important;
+    }
+    
+    .smartfind-multiterm-highlight.smartfind-multiterm-2 {
+        background-color: rgba(255, 138, 101, 0.3) !important; /* Pink */
+        box-shadow: 0 0 0 1px rgba(255, 138, 101, 0.4) !important;
+    }
+    
+    .smartfind-multiterm-highlight.smartfind-multiterm-3 {
+        background-color: rgba(100, 181, 246, 0.3) !important; /* Blue */
+        box-shadow: 0 0 0 1px rgba(100, 181, 246, 0.4) !important;
+    }
+    
+    .smartfind-multiterm-highlight.smartfind-multiterm-4 {
+        background-color: rgba(255, 183, 77, 0.3) !important; /* Orange */
+        box-shadow: 0 0 0 1px rgba(255, 183, 77, 0.4) !important;
+    }
+    
+    .smartfind-multiterm-highlight.smartfind-multiterm-5 {
+        background-color: rgba(186, 104, 200, 0.3) !important; /* Purple */
+        box-shadow: 0 0 0 1px rgba(186, 104, 200, 0.4) !important;
+    }
+    
+    .smartfind-multiterm-highlight.smartfind-multiterm-6 {
+        background-color: rgba(255, 224, 130, 0.3) !important; /* Light Orange */
+        box-shadow: 0 0 0 1px rgba(255, 224, 130, 0.4) !important;
+    }
+    
+    .smartfind-multiterm-highlight.smartfind-multiterm-7 {
+        background-color: rgba(128, 203, 196, 0.3) !important; /* Teal */
+        box-shadow: 0 0 0 1px rgba(128, 203, 196, 0.4) !important;
+    }
     
     /* Current keyword highlight in dark mode */
     .smartfind-keyword-highlight.smartfind-current {
@@ -443,6 +642,12 @@
         background-color: rgba(100, 181, 246, 0.4) !important;
         box-shadow: 0 0 0 2px rgba(100, 181, 246, 0.5) !important;
     }
+
+    /* Current regex highlight in dark mode */
+    .smartfind-regex-highlight.smartfind-current {
+        background-color: rgba(255, 183, 77, 0.4) !important;
+        box-shadow: 0 0 0 2px rgba(255, 183, 77, 0.5) !important;
+    }
     
     /* Cross-node highlights in dark mode */
     .smartfind-keyword-highlight.smartfind-cross-node {
@@ -454,6 +659,11 @@
         background-color: rgba(100, 181, 246, 0.3) !important;
         box-shadow: 0 0 0 1px rgba(100, 181, 246, 0.4), inset 0 0 0 1px rgba(25, 118, 210, 0.25) !important;
     }
+
+    .smartfind-regex-highlight.smartfind-cross-node {
+        background-color: rgba(255, 183, 77, 0.3) !important;
+        box-shadow: 0 0 0 1px rgba(255, 183, 77, 0.4), inset 0 0 0 1px rgba(255, 140, 0, 0.25) !important;
+    }
     
     .smartfind-keyword-highlight.smartfind-cross-node.smartfind-current {
         background-color: rgba(255, 213, 79, 0.5) !important;
@@ -464,6 +674,11 @@
         background-color: rgba(100, 181, 246, 0.6) !important;
         box-shadow: 0 0 0 2px rgba(100, 181, 246, 0.7), inset 0 0 0 1px rgba(68, 138, 255, 0.4) !important;
     }
+
+    .smartfind-regex-highlight.smartfind-cross-node.smartfind-current {
+        background-color: rgba(255, 183, 77, 0.6) !important;
+        box-shadow: 0 0 0 2px rgba(255, 183, 77, 0.7), inset 0 0 0 1px rgba(255, 140, 0, 0.4) !important;
+    }
     
     /* Interactive element highlights for dark mode */
     .smartfind-interactive-highlight {
@@ -473,6 +688,10 @@
     .smartfind-interactive-highlight.smartfind-ai-highlight {
         text-decoration-color: rgba(100, 181, 246, 0.8) !important;
     }
+
+    .smartfind-interactive-highlight.smartfind-regex-highlight {
+        text-decoration-color: rgba(255, 183, 77, 0.8) !important;
+    }
     
     .smartfind-interactive-highlight.smartfind-current {
         text-decoration-color: rgba(255, 213, 79, 1.0) !important;
@@ -480,6 +699,51 @@
     
     .smartfind-interactive-highlight.smartfind-ai-highlight.smartfind-current {
         text-decoration-color: rgba(100, 181, 246, 1.0) !important;
+    }
+
+    .smartfind-interactive-highlight.smartfind-regex-highlight.smartfind-current {
+        text-decoration-color: rgba(255, 183, 77, 1.0) !important;
+    }
+    
+    /* Multi-term interactive highlights for dark mode */
+    .smartfind-interactive-highlight.smartfind-multiterm-highlight {
+        background-color: transparent !important;
+        text-decoration: underline !important;
+        text-decoration-thickness: 2px !important;
+        text-underline-offset: 2px !important;
+        box-shadow: none !important;
+    }
+    
+    .smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-0 {
+        text-decoration-color: rgba(255, 213, 79, 0.8) !important;
+    }
+    
+    .smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-1 {
+        text-decoration-color: rgba(76, 175, 80, 0.8) !important;
+    }
+    
+    .smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-2 {
+        text-decoration-color: rgba(255, 138, 101, 0.8) !important;
+    }
+    
+    .smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-3 {
+        text-decoration-color: rgba(100, 181, 246, 0.8) !important;
+    }
+    
+    .smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-4 {
+        text-decoration-color: rgba(255, 183, 77, 0.8) !important;
+    }
+    
+    .smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-5 {
+        text-decoration-color: rgba(186, 104, 200, 0.8) !important;
+    }
+    
+    .smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-6 {
+        text-decoration-color: rgba(255, 224, 130, 0.8) !important;
+    }
+    
+    .smartfind-interactive-highlight.smartfind-multiterm-highlight.smartfind-multiterm-7 {
+        text-decoration-color: rgba(128, 203, 196, 0.8) !important;
     }
 }
 

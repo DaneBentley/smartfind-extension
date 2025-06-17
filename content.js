@@ -986,6 +986,12 @@ function parseSearchMode(query) {
             cleanQuery: query.substring(1).trim(),
             prefix: "'"
         };
+    } else if (query.startsWith('*')) {
+        return {
+            mode: 'regex',
+            cleanQuery: query.substring(1).trim(),
+            prefix: '*'
+        };
     } else {
         return {
             mode: 'progressive',
@@ -995,15 +1001,183 @@ function parseSearchMode(query) {
     }
 }
 
+// Parse multi-term queries separated by commas
+function parseMultiTermQuery(query) {
+    // Split by comma and clean up each term
+    const terms = query.split(',')
+        .map(term => term.trim())
+        .filter(term => term.length > 0);
+    
+    return {
+        isMultiTerm: terms.length > 1,
+        terms: terms,
+        originalQuery: query
+    };
+}
+
+// Perform multi-term native search with different colors for each term
+function performMultiTermSearch(terms) {
+    log('Performing multi-term search for terms:', terms);
+    clearHighlights();
+    
+    try {
+        const allMatches = [];
+        const processedNodes = new Set();
+        
+        // Search for each term separately
+        terms.forEach((term, termIndex) => {
+            if (!term.trim()) return;
+            
+            const termMatches = [];
+            const termProcessedNodes = new Set();
+            
+            // Search in main document
+            termMatches.push(...searchInDocument(document, term, termProcessedNodes));
+            
+            // Search in shadow DOMs
+            termMatches.push(...searchInShadowDOMs(document, term, termProcessedNodes));
+            
+            // Search in accessible iframes
+            termMatches.push(...searchInIframes(term, termProcessedNodes));
+            
+            // Add term index to each match for color assignment
+            termMatches.forEach(match => {
+                match.termIndex = termIndex;
+                match.term = term;
+            });
+            
+            allMatches.push(...termMatches);
+            
+            // Add processed nodes to global set to avoid re-processing
+            termProcessedNodes.forEach(node => processedNodes.add(node));
+        });
+        
+        log('Found', allMatches.length, 'total matches across all terms');
+        
+        // Remove duplicates and sort by distance from cursor
+        let uniqueMatches = removeDuplicateMatches(allMatches);
+        uniqueMatches = sortMatchesByDistance(uniqueMatches);
+        
+        // Highlight matches with multi-term colors
+        highlightMultiTermMatches(uniqueMatches);
+        
+        // Start from the result closest to cursor position
+        if (uniqueMatches.length > 0) {
+            currentHighlightIndex = findBestStartingIndex(currentHighlights);
+            scrollToHighlight(currentHighlightIndex);
+            updateResultsDisplay(currentHighlightIndex + 1, uniqueMatches.length);
+            
+            // Show helpful message about multi-term search
+            const termCount = terms.length;
+            setStatus(`Found matches for ${termCount} terms`, 'info');
+            setTimeout(() => setStatus(''), 3000);
+        } else {
+            updateResultsDisplay(0, 0);
+        }
+        
+        return uniqueMatches.length;
+        
+    } catch (error) {
+        console.error('SmartFind: Error in multi-term search:', error);
+        updateResultsDisplay(0, 0);
+        return 0;
+    }
+}
+
+// Highlight matches with different colors for each term
+function highlightMultiTermMatches(matches) {
+    // Filter out invalid matches
+    const validMatches = matches.filter(match => {
+        if (!match || typeof match !== 'object') return false;
+        if (!match.node || !match.node.textContent) return false;
+        if (typeof match.start !== 'number' || typeof match.end !== 'number') return false;
+        if (match.start < 0 || match.end <= match.start) return false;
+        if (match.start >= match.node.textContent.length || match.end > match.node.textContent.length) return false;
+        return true;
+    });
+    
+    log(`Highlighting ${validMatches.length} multi-term matches`);
+    
+    // Set flag when modifying DOM
+    isSmartFindModifyingDOM = true;
+    
+    try {
+        clearHighlights();
+        currentHighlights = [];
+        totalMatches = validMatches.length;
+        
+        if (validMatches.length === 0) {
+            updateResultsDisplay(0, 0);
+            return;
+        }
+        
+        validMatches.forEach((match, index) => {
+            try {
+                const nodeLength = match.node.textContent.length;
+                const start = Math.max(0, Math.min(match.start, nodeLength));
+                const end = Math.max(start, Math.min(match.end, nodeLength));
+                
+                // Skip if invalid range
+                if (start >= end || start >= nodeLength || end > nodeLength) {
+                    return;
+                }
+                
+                // Create highlight element with term-specific color
+                const highlight = document.createElement('span');
+                const termIndex = match.termIndex || 0;
+                const colorClass = `smartfind-multiterm-${termIndex % 8}`; // Cycle through 8 colors
+                
+                highlight.className = `smartfind-highlight smartfind-multiterm-highlight ${colorClass} smartfind-new`;
+                highlight.setAttribute('data-smartfind-index', index);
+                highlight.setAttribute('data-term-index', termIndex);
+                highlight.setAttribute('data-term', match.term || '');
+                
+                // Use robust highlighting
+                if (createRobustHighlight(match.node, start, end, highlight)) {
+                    currentHighlights.push(highlight);
+                    
+                    // Remove animation class after animation completes
+                    setTimeout(() => {
+                        highlight.classList.remove('smartfind-new');
+                    }, 200);
+                }
+                
+            } catch (e) {
+                // Silently skip failed highlights
+                if (Math.random() < 0.01) {
+                    console.warn('SmartFind: Failed to highlight multi-term match:', e.message);
+                }
+            }
+        });
+        
+        log('Highlighted', currentHighlights.length, 'multi-term matches');
+        
+    } catch (error) {
+        console.error('SmartFind: Error in highlightMultiTermMatches:', error);
+    } finally {
+        // Reset flag after DOM modifications
+        setTimeout(() => {
+            isSmartFindModifyingDOM = false;
+        }, 500);
+    }
+}
+
 // Set input styling based on search mode
 function setInputStyling(mode, isForced) {
     if (!searchInput) return;
     
     // Reset all styling
-    searchInput.classList.remove('smartfind-ai-mode', 'smartfind-forced-mode');
+    searchInput.classList.remove('smartfind-ai-mode', 'smartfind-forced-mode', 'smartfind-multiterm-mode', 'smartfind-regex-mode');
     
     if (mode === 'ai') {
         searchInput.classList.add('smartfind-ai-mode');
+        if (isForced) {
+            searchInput.classList.add('smartfind-forced-mode');
+        }
+    } else if (mode === 'multiterm') {
+        searchInput.classList.add('smartfind-multiterm-mode');
+    } else if (mode === 'regex') {
+        searchInput.classList.add('smartfind-regex-mode');
         if (isForced) {
             searchInput.classList.add('smartfind-forced-mode');
         }
@@ -1015,7 +1189,7 @@ function setInputStyling(mode, isForced) {
 // Reset input styling
 function resetInputStyling() {
     if (!searchInput) return;
-    searchInput.classList.remove('smartfind-ai-mode', 'smartfind-forced-mode');
+    searchInput.classList.remove('smartfind-ai-mode', 'smartfind-forced-mode', 'smartfind-multiterm-mode');
 }
 
 // Perform forced AI search
@@ -1579,6 +1753,68 @@ function performNativeSearch(query) {
     }
 }
 
+// Perform regex search
+function performRegexSearch(query) {
+    log(' Performing regex search for:', query);
+    clearHighlights();
+    
+    try {
+        // Validate regex pattern
+        let regex;
+        try {
+            regex = new RegExp(query, 'gi');
+        } catch (regexError) {
+            setStatus('Invalid regex pattern: ' + regexError.message, 'error');
+            updateResultsDisplay(0, 0);
+            return 0;
+        }
+        
+        const matches = [];
+        const processedNodes = new Set();
+        
+        // Search in main document
+        matches.push(...searchInDocumentRegex(document, regex, processedNodes));
+        
+        // Search in shadow DOMs
+        matches.push(...searchInShadowDOMsRegex(document, regex, processedNodes));
+        
+        // Search in accessible iframes
+        matches.push(...searchInIframesRegex(regex, processedNodes));
+        
+        log(' Found', matches.length, 'regex matches');
+        
+        // Remove duplicates and sort by distance from cursor
+        let uniqueMatches = removeDuplicateMatches(matches);
+        uniqueMatches = sortMatchesByDistance(uniqueMatches);
+        
+        // Highlight matches
+        highlightMatches(uniqueMatches, 'regex');
+        
+        // Start from the result closest to cursor position
+        if (uniqueMatches.length > 0) {
+            currentHighlightIndex = findBestStartingIndex(currentHighlights);
+            scrollToHighlight(currentHighlightIndex);
+            updateResultsDisplay(currentHighlightIndex + 1, uniqueMatches.length);
+            
+            // Show helpful message for regex search
+            setStatus('Regex search completed', 'info');
+            setTimeout(() => setStatus(''), 2000);
+        } else {
+            updateResultsDisplay(0, 0);
+            setStatus('No regex matches found', 'warning');
+            setTimeout(() => setStatus(''), 3000);
+        }
+        
+        return uniqueMatches.length;
+        
+    } catch (error) {
+        console.error('SmartFind: Error in regex search:', error);
+        setStatus('Regex search error: ' + error.message, 'error');
+        updateResultsDisplay(0, 0);
+        return 0;
+    }
+}
+
 // Search for text in a document
 function searchInDocument(doc, query, processedNodes = new Set()) {
     const matches = [];
@@ -1771,6 +2007,174 @@ function searchInIframes(query, processedNodes) {
         
     } catch (error) {
         console.error('SmartFind: Error in iframe search:', error);
+    }
+    
+    return matches;
+}
+
+// Search for regex in a document
+function searchInDocumentRegex(doc, regex, processedNodes = new Set()) {
+    const matches = [];
+    
+    try {
+        // Determine the root element to search in
+        let rootElement;
+        if (doc instanceof ShadowRoot) {
+            rootElement = doc;
+        } else if (doc instanceof Document) {
+            rootElement = doc.body || doc.documentElement;
+        } else if (doc instanceof Element) {
+            rootElement = doc;
+        } else {
+            return matches;
+        }
+        
+        if (!rootElement) {
+            return matches;
+        }
+        
+        // Use TreeWalker to find all text nodes
+        const walker = document.createTreeWalker(
+            rootElement,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: function(node) {
+                    if (processedNodes.has(node)) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    
+                    const tagName = parent.tagName?.toLowerCase();
+                    if (['script', 'style', 'noscript', 'template', 'head'].includes(tagName)) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    
+                    try {
+                        const style = window.getComputedStyle(parent);
+                        if (style.display === 'none') {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+                    } catch (styleError) {
+                        // If we can't get computed style, include the node
+                    }
+                    
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+            }
+        );
+        
+        let node;
+        while (node = walker.nextNode()) {
+            try {
+                const text = node.textContent;
+                if (!text || !text.trim()) continue;
+                
+                processedNodes.add(node);
+                
+                let match;
+                regex.lastIndex = 0; // Reset regex state
+                while ((match = regex.exec(text)) !== null) {
+                    // Skip zero-length matches
+                    if (match[0].length === 0) {
+                        regex.lastIndex++;
+                        continue;
+                    }
+                    
+                    // Validate match bounds
+                    if (match.index + match[0].length <= text.length) {
+                        matches.push({
+                            node: node,
+                            start: match.index,
+                            end: match.index + match[0].length,
+                            text: match[0],
+                            score: 1.0,
+                            matchType: 'regex'
+                        });
+                    }
+                }
+            } catch (nodeError) {
+                console.warn('SmartFind: Error processing node in regex search:', nodeError);
+                continue;
+            }
+        }
+        
+    } catch (error) {
+        if (Math.random() < 0.01) {
+            console.error('SmartFind: Error in document regex search (sample error):', error.message);
+        }
+    }
+    
+    return matches;
+}
+
+// Search in shadow DOMs with regex
+function searchInShadowDOMsRegex(rootElement, regex, processedNodes, depth = 0) {
+    if (depth >= CONTENT_EXTRACTION_CONFIG.shadowDomDepth) {
+        return [];
+    }
+    
+    const matches = [];
+    
+    try {
+        const elementsWithShadow = rootElement.querySelectorAll('*');
+        
+        for (const element of elementsWithShadow) {
+            try {
+                if (element.shadowRoot && element.shadowRoot instanceof ShadowRoot) {
+                    log(' Searching in shadow root with regex of', element.tagName);
+                    
+                    const shadowMatches = searchInDocumentRegex(element.shadowRoot, regex, processedNodes);
+                    if (shadowMatches && shadowMatches.length > 0) {
+                        matches.push(...shadowMatches);
+                    }
+                    
+                    // Recursively search nested shadow DOMs
+                    const nestedMatches = searchInShadowDOMsRegex(element.shadowRoot, regex, processedNodes, depth + 1);
+                    if (nestedMatches && nestedMatches.length > 0) {
+                        matches.push(...nestedMatches);
+                    }
+                }
+            } catch (shadowError) {
+                if (Math.random() < 0.01) {
+                    console.debug('SmartFind: Shadow root regex search failed (sample error):', shadowError.message);
+                }
+            }
+        }
+        
+    } catch (error) {
+        console.error('SmartFind: Error in shadow DOM regex search:', error);
+    }
+    
+    return matches;
+}
+
+// Search in accessible iframes with regex
+function searchInIframesRegex(regex, processedNodes) {
+    const matches = [];
+    
+    try {
+        const iframes = document.querySelectorAll('iframe');
+        
+        for (const iframe of iframes) {
+            try {
+                if (iframe.contentDocument && iframe.contentDocument instanceof Document) {
+                    log(' Searching in iframe with regex');
+                    const iframeMatches = searchInDocumentRegex(iframe.contentDocument, regex, processedNodes);
+                    if (iframeMatches && iframeMatches.length > 0) {
+                        matches.push(...iframeMatches);
+                    }
+                }
+            } catch (iframeError) {
+                if (Math.random() < 0.01) {
+                    console.debug('SmartFind: Iframe regex search failed (sample error):', iframeError.message);
+                }
+            }
+        }
+        
+    } catch (error) {
+        console.error('SmartFind: Error in iframe regex search:', error);
     }
     
     return matches;
@@ -2826,6 +3230,13 @@ function createHighlightInInteractiveElement(textNode, start, end, highlight) {
         // Add a special class for interactive element highlights
         highlight.classList.add('smartfind-interactive-highlight');
         
+        // Preserve multi-term color classes for interactive elements
+        if (highlight.classList.contains('smartfind-multiterm-highlight')) {
+            // Keep the color class for multi-term highlights in interactive elements
+            const colorClasses = Array.from(highlight.classList).filter(cls => cls.startsWith('smartfind-multiterm-'));
+            colorClasses.forEach(cls => highlight.classList.add(cls));
+        }
+        
         // Get the parent element
         const parent = textNode.parentNode;
         if (!parent) {
@@ -3134,8 +3545,12 @@ function updatePlaceholder() {
         searchInput.placeholder = 'AI search...';
     } else if (value.startsWith("'")) {
         searchInput.placeholder = 'Exact search...';
+    } else if (value.startsWith('*')) {
+        searchInput.placeholder = 'Regex search...';
+    } else if (value.includes(',')) {
+        searchInput.placeholder = 'Multi-term search...';
     } else {
-        searchInput.placeholder = 'Search...';
+        searchInput.placeholder = 'Search... (/, \', * for AI, exact, regex)';
     }
 }
 
@@ -3193,11 +3608,24 @@ async function handleSearchForQuery(rawQuery) {
         isSearching = true;
         
         try {
-            if (searchMode.mode === 'forceKeyword') {
+            // Check for multi-term query first
+            const multiTermQuery = parseMultiTermQuery(query);
+            
+            if (multiTermQuery.isMultiTerm && searchMode.mode !== 'forceAI') {
+                // Multi-term search - use different colors for each term
+                log(' Detected multi-term search with', multiTermQuery.terms.length, 'terms');
+                setInputStyling('multiterm', false);
+                performMultiTermSearch(multiTermQuery.terms);
+            } else if (searchMode.mode === 'forceKeyword') {
                 // Force keyword search with ' prefix
                 log(' Forcing keyword search');
                 setInputStyling('keyword', true);
                 performNativeSearch(query);
+            } else if (searchMode.mode === 'regex') {
+                // Force regex search with * prefix
+                log(' Forcing regex search');
+                setInputStyling('regex', true);
+                performRegexSearch(query);
             } else if (searchMode.mode === 'forceAI') {
                 // Force AI search with / prefix
                 log(' Forcing AI search');
