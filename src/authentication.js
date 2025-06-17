@@ -185,10 +185,21 @@ export async function handleSignOut(request, sender, sendResponse) {
             chrome.identity.removeCachedAuthToken({ token: null }, () => {});
         }
 
-        // Clear local state
-        await chrome.storage.local.remove(['authToken', 'currentUser']);
+        // Clear ALL user-specific data to prevent token caching across accounts
+        await chrome.storage.local.remove([
+            'authToken', 
+            'currentUser',
+            'paidTokens',
+            'aiUsageCount',
+            'userId',
+            'lastTokenSyncCount',
+            'lastSyncTime',
+            'registrationDate',
+            'lastReplenishmentDate',
+            'purchasedTokens'
+        ]);
 
-        log('User signed out');
+        log('User signed out and all user data cleared');
         sendResponse({ success: true, message: 'Signed out successfully' });
 
     } catch (error) {
@@ -256,8 +267,19 @@ export async function handleGetAuthStatus(request, sender, sendResponse) {
             const result = await response.json();
             sendResponse({ success: true, isAuthenticated: true, user: result.user });
         } else {
-            // Token invalid, clear auth state
-            await chrome.storage.local.remove(['authToken', 'currentUser']);
+            // Token invalid, clear ALL user data to prevent token caching
+            await chrome.storage.local.remove([
+                'authToken', 
+                'currentUser',
+                'paidTokens',
+                'aiUsageCount',
+                'userId',
+                'lastTokenSyncCount',
+                'lastSyncTime',
+                'registrationDate',
+                'lastReplenishmentDate',
+                'purchasedTokens'
+            ]);
             sendResponse({ success: true, isAuthenticated: false, user: null });
         }
 

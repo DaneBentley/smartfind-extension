@@ -142,6 +142,9 @@ class PopupManager {
             document.getElementById('token-count').textContent = remainingTokens.toLocaleString();
             document.getElementById('usage-count').textContent = searchesUsed.toLocaleString();
 
+            // Show credit status warning if needed
+            this.updateCreditStatus(remainingTokens);
+
             // Load replenishment countdown for authenticated users
             if (this.currentUser && this.authToken) {
                 await this.loadReplenishmentCountdown();
@@ -150,6 +153,37 @@ class PopupManager {
         } catch (error) {
             console.error('Failed to load stats:', error);
             this.showStatus('Failed to load statistics', 'error');
+        }
+    }
+
+    updateCreditStatus(remainingTokens) {
+        // Show prominent warning when credits are low or exhausted
+        if (remainingTokens === 0) {
+            this.showStatus('⚠️ Credits exhausted! Purchase more tokens or wait for monthly replenishment.', 'error');
+            
+            // Also update the token count display to be more prominent
+            const tokenElement = document.getElementById('token-count');
+            if (tokenElement) {
+                tokenElement.style.color = '#cf222e';
+                tokenElement.style.fontWeight = 'bold';
+            }
+        } else if (remainingTokens <= 5) {
+            this.showStatus(`⚠️ Only ${remainingTokens} credits remaining. Consider purchasing more tokens.`, 'error');
+            
+            // Make low credit count more visible
+            const tokenElement = document.getElementById('token-count');
+            if (tokenElement) {
+                tokenElement.style.color = '#d1242f';
+                tokenElement.style.fontWeight = 'bold';
+            }
+        } else {
+            // Clear any previous credit warnings and reset styling
+            this.hideStatus();
+            const tokenElement = document.getElementById('token-count');
+            if (tokenElement) {
+                tokenElement.style.color = '';
+                tokenElement.style.fontWeight = '';
+            }
         }
     }
 
@@ -335,9 +369,20 @@ class PopupManager {
         this.setLoading(true);
 
         try {
-            // Clear storage directly first
-            console.log('SmartFind: Clearing storage...');
-            await chrome.storage.local.remove(['authToken', 'currentUser']);
+            // Clear ALL user-specific storage to prevent token caching across accounts
+            console.log('SmartFind: Clearing all user storage...');
+            await chrome.storage.local.remove([
+                'authToken', 
+                'currentUser',
+                'paidTokens',
+                'aiUsageCount',
+                'userId',
+                'lastTokenSyncCount',
+                'lastSyncTime',
+                'registrationDate',
+                'lastReplenishmentDate',
+                'purchasedTokens'
+            ]);
             
             // Verify storage is cleared
             const storageCheck = await chrome.storage.local.get(['authToken', 'currentUser']);
@@ -376,7 +421,18 @@ class PopupManager {
             this.authToken = null;
             
             try {
-                await chrome.storage.local.remove(['authToken', 'currentUser']);
+                await chrome.storage.local.remove([
+                    'authToken', 
+                    'currentUser',
+                    'paidTokens',
+                    'aiUsageCount',
+                    'userId',
+                    'lastTokenSyncCount',
+                    'lastSyncTime',
+                    'registrationDate',
+                    'lastReplenishmentDate',
+                    'purchasedTokens'
+                ]);
                 await this.updateUI();
                 await this.loadStats();
             } catch (cleanupError) {

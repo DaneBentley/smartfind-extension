@@ -1,8 +1,8 @@
 // SmartFind content script
 
 // Production logging configuration
-const DEBUG_MODE = false; // Set to false for production
-const log = DEBUG_MODE ? (...args) => console.log('SmartFind:', ...args) : () => {};
+const DEBUG_MODE = false; // Set to false for production (infinite loop fixed!)
+const log = DEBUG_MODE ? (...args) => log('', ...args) : () => {};
 const logError = (...args) => console.error('SmartFind Error:', ...args);
 
 // Global variables
@@ -13,18 +13,43 @@ let currentHighlights = [];
 let currentHighlightIndex = -1;
 let totalMatches = 0;
 let isSearching = false;
+let isSearchingInProgress = false; // NEW: Flag to prevent re-searches during search
 let lastQuery = '';
+let activeQuery = '';
+let lastMeaningfulQuery = '';
+
+// Add to prevent infinite loop from mutations
+let isSmartFindModifyingDOM = false; // Flag to prevent infinite loops from our own DOM changes
+let lastContentMutationTime = 0;
+let lastSearchCompletedTime = 0; // Track when the last search completed
+
+// Additional required variables
 let mutationObserver = null;
 let contentCache = null;
 let lastContentUpdate = 0;
 
+// Extended search state tracking
+let pendingExtendedSearch = null;
+let isWaitingForExtendedConfirmation = false;
+
+// AI search debouncing
+let aiSearchTimeout = null;
+let pendingAISearchQuery = null;
+
 // Enhanced content extraction configuration
 const CONTENT_EXTRACTION_CONFIG = {
-    maxContentLength: 50000,
-    cacheTimeout: 5000, // 5 seconds
-    mutationDebounceTime: 1000,
+    maxContentLength: 200000, // Increased from 50000 to handle more content
+    cacheTimeout: 30000, // Increased from 5000 to 30 seconds for dynamic sites
+    mutationDebounceTime: 100, // Reduced from 500ms to 100ms for faster response
     shadowDomDepth: 3,
-    iframeTimeout: 2000
+    iframeTimeout: 2000,
+    enableDynamicSearch: true, // New flag to enable continuous dynamic search
+    // Hybrid search configuration
+    extendedSearchThreshold: 50000, // Content length that triggers extended search prompt
+    chunkSize: 22000, // Optimal chunk size for AI processing
+    chunkOverlap: 2000, // Overlap between chunks to avoid missing content at boundaries
+    maxChunks: 5, // Maximum number of chunks to search in parallel
+    keywordPrefilterThreshold: 0.1 // Minimum keyword match ratio to include chunk
 };
 
 // Pending search variables for post-authentication retry
@@ -71,7 +96,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // Test if content script is working
-console.log('SmartFind: Content script setup complete');
+log(' Content script setup complete');
 
 // Send a ready signal to background script if needed
 if (chrome.runtime && chrome.runtime.sendMessage) {
@@ -87,19 +112,44 @@ if (chrome.runtime && chrome.runtime.sendMessage) {
 // Initialize enhanced content monitoring
 initializeContentMonitoring();
 
+// Add immediate test for MutationObserver functionality
+setTimeout(() => {
+    log('Testing MutationObserver functionality...');
+    log('MutationObserver exists:', !!mutationObserver);
+    log('Dynamic search enabled:', CONTENT_EXTRACTION_CONFIG.enableDynamicSearch);
+    
+    // Add test element to trigger mutation
+    const testElement = document.createElement('div');
+    testElement.textContent = 'SmartFind test element for mutation detection';
+    testElement.style.display = 'none'; // Hidden so it doesn't affect the page
+    document.body.appendChild(testElement);
+    
+    // Remove it after a short delay
+    setTimeout(() => {
+        if (document.body.contains(testElement)) {
+            document.body.removeChild(testElement);
+            log('Test element cleanup completed');
+        }
+    }, 1000);
+}, 2000);
+
 // Add a simple test function that can be called from console
 window.smartfindTest = function() {
-    console.log('SmartFind: Manual test triggered');
+    log(' Manual test triggered');
     toggleSearchBar();
 };
 
+// Debug functions disabled to prevent console spam
+
 // Initialize content monitoring with MutationObserver
 function initializeContentMonitoring() {
-    console.log('SmartFind: Initializing content monitoring');
+    log(' Initializing content monitoring');
     
     // Set up MutationObserver to detect dynamic content changes
     if (window.MutationObserver) {
-        mutationObserver = new MutationObserver(debounce(handleContentMutation, CONTENT_EXTRACTION_CONFIG.mutationDebounceTime));
+        mutationObserver = new MutationObserver((mutations) => {
+            debounce(handleContentMutation, CONTENT_EXTRACTION_CONFIG.mutationDebounceTime)(mutations);
+        });
         
         mutationObserver.observe(document.body || document.documentElement, {
             childList: true,
@@ -108,27 +158,286 @@ function initializeContentMonitoring() {
             attributes: false // We don't need attribute changes for content extraction
         });
         
-        console.log('SmartFind: MutationObserver initialized');
+        log(' MutationObserver initialized');
     }
     
     // Also listen for common dynamic content events
     ['load', 'DOMContentLoaded', 'readystatechange'].forEach(eventType => {
         document.addEventListener(eventType, () => {
-            console.log(`SmartFind: ${eventType} event detected, invalidating content cache`);
+            log(` ${eventType} event detected, invalidating content cache`);
             invalidateContentCache();
         });
     });
+    
+    // Listen for scroll events that might trigger dynamic content loading (MUCH more conservative)
+    let scrollTimeout;
+    window.addEventListener('scroll', () => {
+        if (CONTENT_EXTRACTION_CONFIG.enableDynamicSearch && activeQuery) {
+            clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(() => {
+                log(' Scroll detected with active query, checking for new content');
+                // Only invalidate cache, don't automatically re-search on scroll
+                // This prevents infinite loops while still allowing fresh content when user manually searches
+                invalidateContentCache();
+            }, 5000); // Much longer delay and only invalidate cache
+        }
+    }, { passive: true });
+    
+    // REMOVED: Periodic re-search mechanism that was causing infinite loops
+    // The mutation observer should be sufficient for detecting real content changes
+}
+
+// Enhanced mutation detection for common dynamic loading patterns
+function isSignificantContentMutation(mutations) {
+    log('Checking mutations for significant content changes. Total mutations:', mutations.length);
+    
+    // CRITICAL: Check if SmartFind is modifying DOM to prevent infinite loops
+    if (isSmartFindModifyingDOM) {
+        return false;
+    }
+    
+    // Much more conservative approach: require substantial changes
+    let hasSmartFindMutations = false;
+    let hasRealContentMutations = false;
+    let substantialContentChanges = 0;
+    
+    for (let i = 0; i < mutations.length; i++) {
+        const mutation = mutations[i];
+        
+        // Check if the mutation target or any added/removed nodes are SmartFind elements
+        const isSmartFindMutation = () => {
+            // Check target
+            if (mutation.target && mutation.target.nodeType === Node.ELEMENT_NODE) {
+                const element = mutation.target;
+                if (element.classList && (element.classList.contains('smartfind-highlight') || element.id === 'smartfind-search-bar')) {
+                    return true;
+                }
+                // Also check if target is inside a smartfind element
+                if (element.closest && element.closest('.smartfind-highlight, #smartfind-search-bar')) {
+                    return true;
+                }
+            }
+            
+            // Check added nodes
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    const element = node;
+                    if (element.classList && (element.classList.contains('smartfind-highlight') || element.id === 'smartfind-search-bar')) {
+                        return true;
+                    }
+                    // Check if any child has smartfind classes
+                    if (element.querySelector && element.querySelector('.smartfind-highlight, #smartfind-search-bar')) {
+                        return true;
+                    }
+                } else if (node.nodeType === Node.TEXT_NODE) {
+                    // Check if text node is inside a SmartFind element
+                    let parent = node.parentNode;
+                    while (parent && parent.nodeType === Node.ELEMENT_NODE) {
+                        if (parent.classList && parent.classList.contains('smartfind-highlight')) {
+                            return true;
+                        }
+                        parent = parent.parentNode;
+                    }
+                }
+            }
+            
+            // Check removed nodes
+            for (const node of mutation.removedNodes) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    const element = node;
+                    if (element.classList && (element.classList.contains('smartfind-highlight') || element.id === 'smartfind-search-bar')) {
+                        return true;
+                    }
+                    // Check if any child had smartfind classes
+                    if (element.querySelector && element.querySelector('.smartfind-highlight, #smartfind-search-bar')) {
+                        return true;
+                    }
+                } else if (node.nodeType === Node.TEXT_NODE) {
+                    // If we're removing text that was inside a SmartFind element, it's our mutation
+                    // This is harder to detect after removal, so we'll be conservative
+                    const textContent = node.textContent || '';
+                    if (textContent.length < 100) { // Small text removals are likely SmartFind related
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        };
+        
+        if (isSmartFindMutation()) {
+            hasSmartFindMutations = true;
+            continue;
+        }
+        
+        if (mutation.type === 'childList') {
+            // MUCH more conservative: require substantial content additions
+            if (mutation.addedNodes.length > 0) {
+                for (const node of mutation.addedNodes) {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        const element = node;
+                        // Only count as substantial if it's a meaningful element with content
+                        const textContent = element.textContent || '';
+                        if (textContent.trim().length > 50 && // Must have substantial text
+                            !element.classList.contains('smartfind-highlight') && // Not our element
+                            element.tagName !== 'SCRIPT' && // Not scripts
+                            element.tagName !== 'STYLE' && // Not styles
+                            element.tagName !== 'LINK') { // Not links
+                            substantialContentChanges++;
+                        }
+                    } else if (node.nodeType === Node.TEXT_NODE) {
+                        const textContent = node.textContent || '';
+                        if (textContent.trim().length > 50) { // Only substantial text changes
+                            // Check if this text node is inside a SmartFind highlight
+                            let parent = node.parentNode;
+                            let isSmartFindText = false;
+                            while (parent && parent.nodeType === Node.ELEMENT_NODE) {
+                                if (parent.classList && parent.classList.contains('smartfind-highlight')) {
+                                    isSmartFindText = true;
+                                    break;
+                                }
+                                parent = parent.parentNode;
+                            }
+                            
+                            if (!isSmartFindText) {
+                                substantialContentChanges++;
+                            } else {
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Be even more conservative with removals - only care about MAJOR removals
+            if (mutation.removedNodes.length > 10) { // Only care about significant removals
+                substantialContentChanges++;
+            }
+        }
+        
+        // Character data changes - be more conservative
+        if (mutation.type === 'characterData') {
+            const textContent = mutation.target.textContent || '';
+            if (textContent.trim().length > 50) { // Only substantial text changes
+                // Check if this character data change is on a SmartFind element
+                let parent = mutation.target.parentNode;
+                let isSmartFindText = false;
+                while (parent && parent.nodeType === Node.ELEMENT_NODE) {
+                    if (parent.classList && parent.classList.contains('smartfind-highlight')) {
+                        isSmartFindText = true;
+                        break;
+                    }
+                    parent = parent.parentNode;
+                }
+                
+                if (!isSmartFindText) {
+                    substantialContentChanges++;
+                } else {
+                }
+            }
+        }
+    }
+    
+    // Only consider it significant if we have substantial changes AND they're not all SmartFind-related
+    hasRealContentMutations = substantialContentChanges >= 2; // Require at least 2 substantial changes
+    
+    if (hasSmartFindMutations && !hasRealContentMutations) {
+        return false;
+    }
+    
+    if (hasRealContentMutations) {
+        return true;
+    }
+    
+    log('No significant content mutations detected');
+    return false;
 }
 
 // Handle content mutations
 function handleContentMutation(mutations) {
-    console.log('SmartFind: Content mutation detected, invalidating cache');
+    // CRITICAL: Ignore mutations when WE are modifying the DOM (prevents infinite loops)
+    if (isSmartFindModifyingDOM) {
+        return;
+    }
+    
+    // CRITICAL: Ignore mutations when a search is already in progress (prevents infinite loops)
+    if (isSearchingInProgress) {
+        return;
+    }
+    
+    // CRITICAL: Check if all mutations are SmartFind-related before doing expensive analysis
+    const allSmartFindMutations = mutations.every(mutation => {
+        // Check if mutation target is a SmartFind element
+        if (mutation.target && mutation.target.nodeType === Node.ELEMENT_NODE) {
+            const element = mutation.target;
+            if (element.classList && (element.classList.contains('smartfind-highlight') || element.id === 'smartfind-search-bar')) {
+                return true;
+            }
+            if (element.closest && element.closest('.smartfind-highlight, #smartfind-search-bar')) {
+                return true;
+            }
+        }
+        
+        // Check added/removed nodes
+        for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                const element = node;
+                if (element.classList && (element.classList.contains('smartfind-highlight') || element.id === 'smartfind-search-bar')) {
+                    return true;
+                }
+                if (element.querySelector && element.querySelector('.smartfind-highlight, #smartfind-search-bar')) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    });
+    
+    if (allSmartFindMutations) {
+        return;
+    }
+    
+    // Add timestamp check to prevent too frequent re-searches (increased from 500ms to 2 seconds)
+    const now = Date.now();
+    if (lastContentMutationTime && (now - lastContentMutationTime) < 2000) {
+        return;
+    }
+    
+    // CRITICAL: Prevent re-searches immediately after a search completes (prevents highlight clearing)
+    if (lastSearchCompletedTime && (now - lastSearchCompletedTime) < 3000) {
+        return;
+    }
+    
+    lastContentMutationTime = now;
+    
+    log('Content mutation detected. Active query:', activeQuery, 'Dynamic search enabled:', CONTENT_EXTRACTION_CONFIG.enableDynamicSearch);
     invalidateContentCache();
     
-    // If we're currently searching, re-run the search with updated content
-    if (isSearching && lastQuery) {
-        console.log('SmartFind: Re-running search due to content change');
-        handleSearch();
+    // Use the most recent meaningful query for dynamic re-search
+    const queryToUse = activeQuery || lastMeaningfulQuery;
+    
+    // Enhanced dynamic search: re-run search if there's a meaningful query
+    if (CONTENT_EXTRACTION_CONFIG.enableDynamicSearch && queryToUse && queryToUse.length >= 2) {
+        log('Checking for significant mutations...');
+        // Check if this is a significant content change
+        if (isSignificantContentMutation(mutations)) {
+            log('SmartFind: Significant content mutation detected. Query to use:', queryToUse);
+            // Use a longer delay to allow DOM to stabilize after mutations (increased from 300ms to 1 second)
+            setTimeout(() => {
+                // Triple check we're not modifying DOM and not searching and query is still meaningful
+                if (!isSmartFindModifyingDOM && !isSearchingInProgress) {
+                    const finalQuery = activeQuery || lastMeaningfulQuery;
+                    if (finalQuery && finalQuery.length >= 2) {
+                        log('SmartFind: Re-running search due to significant content change');
+                        handleSearchForQuery(finalQuery);
+                    }
+                } else {
+                }
+            }, 1000); // Longer delay to ensure DOM operations complete
+        } else {
+        }
+    } else {
+        log('Not re-running search. Dynamic search enabled:', CONTENT_EXTRACTION_CONFIG.enableDynamicSearch, 'Active query:', activeQuery);
     }
 }
 
@@ -166,21 +475,21 @@ async function retryPendingSearch() {
 
 // Toggle search bar visibility
 function toggleSearchBar() {
-    console.log('SmartFind: toggleSearchBar called, searchBar exists:', !!searchBar);
-    console.log('SmartFind: document.body exists:', !!document.body);
-    console.log('SmartFind: document.readyState:', document.readyState);
+    log(' toggleSearchBar called, searchBar exists:', !!searchBar);
+    log(' document.body exists:', !!document.body);
+    log(' document.readyState:', document.readyState);
     
     if (!searchBar) {
         createSearchBar();
     } else {
         if (searchBar.classList.contains('smartfind-hidden')) {
-            console.log('SmartFind: Showing search bar');
+            log(' Showing search bar');
             searchBar.classList.remove('smartfind-hidden');
             if (searchInput) {
                 searchInput.focus();
             }
         } else {
-            console.log('SmartFind: Hiding search bar');
+            log(' Hiding search bar');
             hideSearchBar();
         }
     }
@@ -191,12 +500,24 @@ function hideSearchBar() {
     if (searchBar) {
         searchBar.classList.add('smartfind-hidden');
         clearHighlights();
+        
+        // CRITICAL: Clear all queries and flags to prevent background re-searches
+        activeQuery = ''; // Clear active query when hiding search bar
+        lastMeaningfulQuery = ''; // Clear meaningful query when hiding search bar
+        isSearchingInProgress = false; // Clear search flag
+        
+        // Cancel any pending AI search
+        if (aiSearchTimeout) {
+            clearTimeout(aiSearchTimeout);
+            aiSearchTimeout = null;
+        }
+        
     }
 }
 
 // Cleanup function for when the extension is disabled or page unloads
 function cleanup() {
-    console.log('SmartFind: Cleaning up');
+    log(' Cleaning up');
     
     // Disconnect MutationObserver
     if (mutationObserver) {
@@ -209,6 +530,12 @@ function cleanup() {
     
     // Clear cache
     invalidateContentCache();
+    
+    // Cancel any pending AI search
+    if (aiSearchTimeout) {
+        clearTimeout(aiSearchTimeout);
+        aiSearchTimeout = null;
+    }
     
     // Remove search bar
     if (searchBar && searchBar.parentNode) {
@@ -231,7 +558,7 @@ if (chrome.runtime) {
 
 // Create search bar UI
 function createSearchBar() {
-    console.log('SmartFind: Creating search bar');
+    log(' Creating search bar');
     
     // Check if document.body is available
     if (!document.body) {
@@ -243,11 +570,11 @@ function createSearchBar() {
     searchBar.id = 'smartfind-search-bar';
     searchBar.className = 'smartfind-container';
     
-    console.log('SmartFind: Created div element:', searchBar);
+    log(' Created div element:', searchBar);
     
     searchBar.innerHTML = `
         <div class="smartfind-search-box">
-            <input type="text" id="smartfind-input" placeholder="Search: exact or general" autocomplete="off" spellcheck="false">
+            <input type="text" id="smartfind-input" placeholder="Search..." autocomplete="off" spellcheck="false">
             <div class="smartfind-controls">
                 <span id="smartfind-results" class="smartfind-results">0/0</span>
                 <button id="smartfind-prev" class="smartfind-nav-btn" title="Previous result (Shift+Enter)">
@@ -270,13 +597,13 @@ function createSearchBar() {
         <div id="smartfind-status" class="smartfind-status"></div>
     `;
     
-    console.log('SmartFind: Set innerHTML, about to append to body');
+    log(' Set innerHTML, about to append to body');
     
     try {
         document.body.appendChild(searchBar);
-        console.log('SmartFind: Search bar added to DOM successfully');
-        console.log('SmartFind: Search bar element:', searchBar);
-        console.log('SmartFind: Search bar parent:', searchBar.parentElement);
+        log(' Search bar added to DOM successfully');
+        log(' Search bar element:', searchBar);
+        log(' Search bar parent:', searchBar.parentElement);
     } catch (error) {
         console.error('SmartFind: Error appending to body:', error);
         return;
@@ -286,8 +613,8 @@ function createSearchBar() {
     searchInput = document.getElementById('smartfind-input');
     searchResults = document.getElementById('smartfind-results');
     
-    console.log('SmartFind: searchInput element:', searchInput);
-    console.log('SmartFind: searchResults element:', searchResults);
+    log(' searchInput element:', searchInput);
+    log(' searchResults element:', searchResults);
     
     if (!searchInput || !searchResults) {
         console.error('SmartFind: Failed to get references to search elements');
@@ -300,73 +627,103 @@ function createSearchBar() {
     setupEventListeners();
     
     // Show and focus the input
-    console.log('SmartFind: About to show search bar');
+    log(' About to show search bar');
     
     if (searchInput) {
         searchInput.focus();
-        console.log('SmartFind: Focused input element');
+        log(' Focused input element');
     }
     
-    console.log('SmartFind: Search bar creation complete');
+    log(' Search bar creation complete');
 }
 
 // Setup all event listeners
 function setupEventListeners() {
-    console.log('SmartFind: Setting up event listeners');
+    log(' Setting up event listeners');
     
-    // Input events
-    searchInput.addEventListener('input', debounce(handleSearch, 300));
+    // Input events - reduced debounce for more responsive feel like Chrome
+    searchInput.addEventListener('input', debounce(handleSearch, 150));
     searchInput.addEventListener('input', updatePlaceholder);
     searchInput.addEventListener('keydown', handleKeyDown);
     
-    // Button events - check if button is disabled before navigating
-    document.getElementById('smartfind-next').addEventListener('click', (e) => {
-        if (!e.target.disabled) navigateResults(1);
-    });
-    document.getElementById('smartfind-prev').addEventListener('click', (e) => {
-        if (!e.target.disabled) navigateResults(-1);
-    });
+    // Button events
+    document.getElementById('smartfind-next').addEventListener('click', () => navigateResults(1));
+    document.getElementById('smartfind-prev').addEventListener('click', () => navigateResults(-1));
     document.getElementById('smartfind-close').addEventListener('click', hideSearchBar);
     
-    // Global escape key
+    // Global escape key - native Chrome behavior: first escape clears input, second hides
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && searchBar && !searchBar.classList.contains('smartfind-hidden')) {
-            hideSearchBar();
+            if (searchInput.value.trim()) {
+                // First escape: clear input
+                searchInput.value = '';
+                handleSearch();
+                searchInput.focus();
+            } else {
+                // Second escape: hide search bar
+                hideSearchBar();
+            }
         }
     });
     
-    // Initialize buttons as disabled
-    const prevBtn = document.getElementById('smartfind-prev');
-    const nextBtn = document.getElementById('smartfind-next');
-    if (prevBtn && nextBtn) {
-        prevBtn.disabled = true;
-        nextBtn.disabled = true;
-    }
-    
-    console.log('SmartFind: Event listeners set up successfully');
+    log(' Event listeners set up successfully');
 }
 
-// Handle keyboard shortcuts in search input
+// Handle keyboard shortcuts in search input - simplified to match Chrome behavior
 function handleKeyDown(e) {
     switch (e.key) {
         case 'Enter':
             e.preventDefault();
+            
+            // Handle extended search confirmation
+            if (isWaitingForExtendedConfirmation) {
+                
+                if (pendingExtendedSearch && pendingExtendedSearch.query) {
+                    const queryToSearch = pendingExtendedSearch.query; // Store query before clearing
+                    clearExtendedSearchPrompt();
+                    performExtendedAISearch(queryToSearch);
+                    return;
+                } else {
+                    clearExtendedSearchPrompt();
+                    // Fall through to regular search handling
+                }
+            }
+            
+            // On Enter, trigger immediate AI search if no keyword results found
+            const currentQuery = searchInput?.value?.trim();
+            if (currentQuery && currentHighlights.length === 0) {
+                // Cancel any pending debounced search
+                if (aiSearchTimeout) {
+                    clearTimeout(aiSearchTimeout);
+                    aiSearchTimeout = null;
+                }
+                // Trigger immediate AI search
+                setInputStyling('ai', false);
+                performProgressiveAISearch(currentQuery);
+                return;
+            }
+            
             if (e.shiftKey) {
-                // Previous - check if prev button is disabled
-                const prevBtn = document.getElementById('smartfind-prev');
-                if (prevBtn && !prevBtn.disabled) {
-                    navigateResults(-1);
-                }
+                navigateResults(-1); // Previous result
             } else {
-                // Next - check if next button is disabled
-                const nextBtn = document.getElementById('smartfind-next');
-                if (nextBtn && !nextBtn.disabled) {
-                    navigateResults(1);
-                }
+                navigateResults(1);  // Next result  
             }
             break;
         case 'Escape':
-            hideSearchBar();
+            // Clear extended search confirmation if active
+            if (isWaitingForExtendedConfirmation) {
+                clearExtendedSearchPrompt();
+                return;
+            }
+            
+            if (searchInput.value.trim()) {
+                // Clear input first
+                searchInput.value = '';
+                handleSearch();
+            } else {
+                // Hide search bar
+                hideSearchBar();
+            }
             break;
     }
 }
@@ -384,79 +741,26 @@ function debounce(func, wait) {
     };
 }
 
-// Main search handler with progressive search
+// Main search handler - simplified for Chrome-like responsiveness
 async function handleSearch() {
-    const rawQuery = searchInput.value.trim();
-    console.log('SmartFind: handleSearch called with query:', rawQuery);
+    const rawQuery = searchInput?.value?.trim();
+    log('handleSearch called with query:', rawQuery);
     
     if (!rawQuery) {
         clearHighlights();
         updateResultsDisplay(0, 0);
         setStatus('');
         resetInputStyling();
+        // DON'T clear activeQuery here - keep it for dynamic re-search
+        // activeQuery will be cleared when search bar is hidden
         return;
     }
     
+    // Don't search for the exact same query repeatedly (debouncing)
     if (rawQuery === lastQuery) return;
-    lastQuery = rawQuery;
     
-    // Parse search mode and clean query
-    const searchMode = parseSearchMode(rawQuery);
-    const query = searchMode.cleanQuery;
-    
-    console.log('SmartFind: Search mode:', searchMode.mode, 'Clean query:', query);
-    
-    isSearching = true;
-    
-    try {
-        if (searchMode.mode === 'forceKeyword') {
-            // Force keyword search with ' prefix
-            console.log('SmartFind: Forcing keyword search');
-            setInputStyling('keyword', true);
-            performNativeSearch(query);
-        } else if (searchMode.mode === 'forceAI') {
-            // Force AI search with / prefix
-            console.log('SmartFind: Forcing AI search');
-            setInputStyling('ai', true);
-            await performForcedAISearch(query);
-        } else {
-            // Progressive search: keyword first, then AI if no matches
-            console.log('SmartFind: Starting progressive search - trying keyword first');
-            resetInputStyling();
-            
-            const keywordResults = performNativeSearch(query);
-            
-            if (keywordResults === 0) {
-                // No exact matches - try AI search
-                console.log('SmartFind: No keyword matches, trying AI search...');
-                setInputStyling('ai', false);
-                await performProgressiveAISearch(query);
-            }
-        }
-    } catch (error) {
-        console.error('SmartFind search error:', error);
-        
-        // Handle specific error types
-        if (error instanceof DOMException) {
-            console.error('SmartFind: DOM Exception occurred:', error.name, error.message);
-            setStatus('Search error - please try again', 'error');
-        } else if (error instanceof RangeError) {
-            console.error('SmartFind: Range Error occurred:', error.message);
-            setStatus('Search error - please try again', 'error');
-        } else {
-            // Fallback to keyword search for other errors
-            try {
-                performNativeSearch(query);
-                setStatus('Using keyword search', 'warning');
-            } catch (fallbackError) {
-                console.error('SmartFind: Fallback search also failed:', fallbackError);
-                setStatus('Search unavailable - please refresh page', 'error');
-            }
-        }
-        resetInputStyling();
-    }
-    
-    isSearching = false;
+    // Delegate to the main search function
+    await handleSearchForQuery(rawQuery);
 }
 
 // Parse search mode from query prefixes
@@ -553,7 +857,7 @@ async function performForcedAISearch(query) {
             };
             log('Stored pending forced AI search:', query);
             showSignInPrompt(response.error);
-        } else if (response.error.includes('Free tier limit reached') || response.error.includes('purchase more tokens')) {
+        } else if (response.error.includes('Credits exhausted') || response.error.includes('purchase more tokens')) {
             showPaymentOption(response.error);
         } else {
             // Actual AI search failure
@@ -567,12 +871,31 @@ async function performForcedAISearch(query) {
 
 // Perform progressive AI search (fallback from keyword)
 async function performProgressiveAISearch(query) {
+    
     const content = extractPageContent();
     
-    // Show loading state
-    setAISearchLoadingState();
+    log('performProgressiveAISearch: Content length:', content.length);
+    log('performProgressiveAISearch: Query:', query);
     
-    const response = await new Promise((resolve) => {
+    // Check if this requires extended search
+    const needsExtended = requiresExtendedSearch(content, query);
+    log('performProgressiveAISearch: Needs extended search:', needsExtended);
+    
+    if (needsExtended) {
+        const estimatedTokens = estimateExtendedSearchTokens(content);
+        log('performProgressiveAISearch: Showing extended search prompt with', estimatedTokens, 'tokens');
+        showExtendedSearchPrompt(query, estimatedTokens);
+        return;
+    }
+    
+    log('performProgressiveAISearch: Proceeding with regular AI search');
+    
+    try {
+        // Show loading state
+        setAISearchLoadingState();
+        
+        log('performProgressiveAISearch: Sending message to background script...');
+        const response = await new Promise((resolve) => {
         chrome.runtime.sendMessage({
             action: "performAISearch",
             query: query,
@@ -583,6 +906,7 @@ async function performProgressiveAISearch(query) {
                 console.error('SmartFind: Error sending message to background:', chrome.runtime.lastError);
                 resolve({ error: chrome.runtime.lastError.message });
             } else {
+                log('performProgressiveAISearch: Received response from background:', response);
                 resolve(response);
             }
         });
@@ -591,21 +915,29 @@ async function performProgressiveAISearch(query) {
     // Clear loading state
     clearAISearchLoadingState();
     
+    log('performProgressiveAISearch: Processing response...', response);
+    
     if (response.success) {
+        log('performProgressiveAISearch: Response success=true, checking result...');
         if (response.result) {
+            log('performProgressiveAISearch: AI returned results:', response.result);
             // AI returned results
             const actualHighlights = performAISearch(response.result);
+            log('performProgressiveAISearch: Highlighted', actualHighlights, 'matches');
             if (actualHighlights === 0) {
                 // AI returned results but none matched on page - fall back to keyword styling
+                log('performProgressiveAISearch: No highlights found, falling back');
                 resetInputStyling();
                 setAIEmptyResultsState();
             }
         } else {
+            log('performProgressiveAISearch: AI search succeeded but returned no results');
             // AI search succeeded but returned no results - fall back to keyword styling
             resetInputStyling();
             setAIEmptyResultsState();
         }
     } else if (response.error) {
+        log('performProgressiveAISearch: Response has error:', response.error);
         if (response.needsAuth) {
             // Store the search for retry after sign-in
             pendingSearch = {
@@ -615,27 +947,35 @@ async function performProgressiveAISearch(query) {
             };
             log('Stored pending progressive AI search:', query);
             showSignInPrompt(response.error);
-        } else if (response.error.includes('Free tier limit reached') || response.error.includes('purchase more tokens')) {
+        } else if (response.error.includes('Credits exhausted') || response.error.includes('purchase more tokens')) {
             showPaymentOption(response.error);
         } else {
             // Actual failure - fall back to keyword mode silently
+            log('performProgressiveAISearch: AI search failed, falling back to keyword mode');
             resetInputStyling();
         }
     } else {
+        log('performProgressiveAISearch: Unexpected response format:', response);
         // Unexpected response - fall back to keyword mode silently
         resetInputStyling();
+    }
+    
+    } catch (error) {
+        clearAISearchLoadingState();
+        resetInputStyling();
+        setStatus('AI search failed', 'error');
     }
 }
 
 // Extract readable content from the page
 // Enhanced content extraction with caching, shadow DOM, and iframe support
 function extractPageContent() {
-    console.log('SmartFind: Extracting page content');
+    log(' Extracting page content');
     
     // Check cache first
     const now = Date.now();
     if (contentCache && (now - lastContentUpdate) < CONTENT_EXTRACTION_CONFIG.cacheTimeout) {
-        console.log('SmartFind: Using cached content');
+        log(' Using cached content');
         return contentCache;
     }
     
@@ -654,7 +994,7 @@ function extractPageContent() {
         
         // Strategy 4: Fallback to full document text if content is insufficient
         if (content.length < 500) {
-            console.log('SmartFind: Content too short, using fallback extraction');
+            log(' Content too short, using fallback extraction');
             content += extractFallbackContent();
         }
         
@@ -665,7 +1005,7 @@ function extractPageContent() {
         contentCache = content;
         lastContentUpdate = now;
         
-        console.log(`SmartFind: Extracted ${content.length} characters of content`);
+        log(` Extracted ${content.length} characters of content`);
         return content;
         
     } catch (error) {
@@ -677,7 +1017,7 @@ function extractPageContent() {
 
 // Extract content from a document with enhanced selectors
 function extractFromDocument(doc, processedElements = new Set()) {
-    console.log('SmartFind: Extracting from document');
+    log(' Extracting from document');
     
     // Priority content selectors (most important first)
     const prioritySelectors = [
@@ -725,7 +1065,7 @@ function extractFromDocument(doc, processedElements = new Set()) {
         
         // If we don't have enough content, use secondary selectors
         if (content.length < 2000) {
-            console.log('SmartFind: Using secondary selectors for more content');
+            log(' Using secondary selectors for more content');
             for (const selector of secondarySelectors) {
                 const elements = doc.querySelectorAll(selector);
                 for (const element of elements) {
@@ -781,7 +1121,7 @@ function extractFromShadowDOMs(rootElement, processedElements, depth = 0) {
         return '';
     }
     
-    console.log(`SmartFind: Extracting from shadow DOMs (depth ${depth})`);
+    log(` Extracting from shadow DOMs (depth ${depth})`);
     let content = '';
     
     try {
@@ -791,7 +1131,7 @@ function extractFromShadowDOMs(rootElement, processedElements, depth = 0) {
         for (const element of elementsWithShadow) {
             try {
                 if (element.shadowRoot) {
-                    console.log('SmartFind: Found shadow root in', element.tagName);
+                    log(' Found shadow root in', element.tagName);
                     content += extractFromDocument(element.shadowRoot, processedElements);
                     
                     // Recursively check for nested shadow DOMs
@@ -812,18 +1152,18 @@ function extractFromShadowDOMs(rootElement, processedElements, depth = 0) {
 
 // Extract content from accessible iframes
 function extractFromIframes() {
-    console.log('SmartFind: Extracting from iframes');
+    log(' Extracting from iframes');
     let content = '';
     
     try {
         const iframes = document.querySelectorAll('iframe');
-        console.log(`SmartFind: Found ${iframes.length} iframes`);
+        log(` Found ${iframes.length} iframes`);
         
         for (const iframe of iframes) {
             try {
                 // Only try to access same-origin iframes
                 if (iframe.contentDocument) {
-                    console.log('SmartFind: Accessing iframe content');
+                    log(' Accessing iframe content');
                     const iframeContent = extractFromDocument(iframe.contentDocument);
                     if (iframeContent && iframeContent.length > 50) {
                         content += iframeContent + '\n\n';
@@ -844,7 +1184,7 @@ function extractFromIframes() {
 
 // Fallback content extraction for difficult sites
 function extractFallbackContent() {
-    console.log('SmartFind: Using fallback content extraction');
+    log(' Using fallback content extraction');
     
     try {
         // Try different fallback strategies
@@ -978,7 +1318,7 @@ function isContentDuplicate(existingContent, newText) {
 
 // Enhanced native keyword search with shadow DOM and iframe support
 function performNativeSearch(query) {
-    console.log('SmartFind: Performing enhanced native search for:', query);
+    log(' Performing enhanced native search for:', query);
     clearHighlights();
     
     try {
@@ -994,7 +1334,7 @@ function performNativeSearch(query) {
         // Search in accessible iframes
         matches.push(...searchInIframes(query, processedNodes));
         
-        console.log('SmartFind: Found', matches.length, 'enhanced native matches');
+        log(' Found', matches.length, 'enhanced native matches');
         
         // Remove duplicates and sort by position
         const uniqueMatches = removeDuplicateMatches(matches);
@@ -1002,12 +1342,15 @@ function performNativeSearch(query) {
         // Highlight matches
         highlightMatches(uniqueMatches, 'keyword');
         
+        // Chrome-like behavior: automatically select first result
         if (uniqueMatches.length > 0) {
             currentHighlightIndex = 0;
             scrollToHighlight(0);
+            updateResultsDisplay(1, uniqueMatches.length);
+        } else {
+            updateResultsDisplay(0, 0);
         }
         
-        updateResultsDisplay(uniqueMatches.length > 0 ? 1 : 0, uniqueMatches.length);
         return uniqueMatches.length;
         
     } catch (error) {
@@ -1022,9 +1365,30 @@ function searchInDocument(doc, query, processedNodes = new Set()) {
     const matches = [];
     
     try {
+        // Determine the root element to search in
+        let rootElement;
+        if (doc instanceof ShadowRoot) {
+            // For shadow roots, use the shadow root itself as the root
+            rootElement = doc;
+        } else if (doc instanceof Document) {
+            // For documents, use body or documentElement
+            rootElement = doc.body || doc.documentElement;
+        } else if (doc instanceof Element) {
+            // For regular elements, use the element itself
+            rootElement = doc;
+        } else {
+            // Invalid document/element, skip silently
+            return matches;
+        }
+        
+        // Validate that we have a valid root element
+        if (!rootElement) {
+            return matches;
+        }
+        
         // Use TreeWalker to find all text nodes
         const walker = document.createTreeWalker(
-            doc.body || doc.documentElement,
+            rootElement,
             NodeFilter.SHOW_TEXT,
             {
                 acceptNode: function(node) {
@@ -1033,23 +1397,32 @@ function searchInDocument(doc, query, processedNodes = new Set()) {
                         return NodeFilter.FILTER_REJECT;
                     }
                     
-                    // Skip script and style elements
+                    // Check parent element
                     const parent = node.parentElement;
                     if (!parent) return NodeFilter.FILTER_REJECT;
                     
+                    // Skip script, style, and other non-content elements
                     const tagName = parent.tagName?.toLowerCase();
-                    if (['script', 'style', 'noscript'].includes(tagName)) {
+                    if (['script', 'style', 'noscript', 'template', 'head'].includes(tagName)) {
                         return NodeFilter.FILTER_REJECT;
                     }
                     
-                    // Skip hidden elements
+                    // More permissive hidden content detection for dynamic content
                     try {
+                        // Only reject truly hidden elements (display: none)
                         const style = window.getComputedStyle(parent);
-                        if (style.display === 'none' || style.visibility === 'hidden') {
+                        if (style.display === 'none') {
                             return NodeFilter.FILTER_REJECT;
                         }
+                        
+                        // Allow elements with visibility: hidden or opacity: 0 (might contain searchable content)
+                        // Allow elements with zero dimensions (might be dynamic content loading)
+                        
+                        // REMOVED: Viewport filtering to search ALL content including dynamically loaded content
+                        // This allows searching in infinite scroll content that's outside current viewport
+                        
                     } catch (styleError) {
-                        // If we can't get computed style, include the node
+                        // If we can't get computed style, include the node (fail-safe)
                     }
                     
                     return NodeFilter.FILTER_ACCEPT;
@@ -1063,13 +1436,19 @@ function searchInDocument(doc, query, processedNodes = new Set()) {
         while (node = walker.nextNode()) {
             try {
                 const text = node.textContent;
-                if (!text) continue;
+                if (!text || !text.trim()) continue; // Skip empty text
                 
                 processedNodes.add(node);
                 
                 let match;
                 regex.lastIndex = 0; // Reset regex state
                 while ((match = regex.exec(text)) !== null) {
+                    // Skip zero-length matches completely
+                    if (match[0].length === 0) {
+                        regex.lastIndex++;
+                        continue;
+                    }
+                    
                     // Validate match bounds
                     if (match.index + match[0].length <= text.length) {
                         matches.push({
@@ -1081,11 +1460,6 @@ function searchInDocument(doc, query, processedNodes = new Set()) {
                             matchType: 'exact'
                         });
                     }
-                    
-                    // Prevent infinite loop
-                    if (match[0].length === 0) {
-                        regex.lastIndex++;
-                    }
                 }
             } catch (nodeError) {
                 console.warn('SmartFind: Error processing node:', nodeError);
@@ -1094,7 +1468,10 @@ function searchInDocument(doc, query, processedNodes = new Set()) {
         }
         
     } catch (error) {
-        console.error('SmartFind: Error in document search:', error);
+        // Rate limit error logging to prevent console spam
+        if (Math.random() < 0.01) {
+            console.error('SmartFind: Error in document search (sample error):', error.message);
+        }
     }
     
     return matches;
@@ -1115,15 +1492,28 @@ function searchInShadowDOMs(rootElement, query, processedNodes, depth = 0) {
         for (const element of elementsWithShadow) {
             try {
                 if (element.shadowRoot) {
-                    console.log('SmartFind: Searching in shadow root of', element.tagName);
-                    matches.push(...searchInDocument(element.shadowRoot, query, processedNodes));
+                    log(' Searching in shadow root of', element.tagName);
                     
-                    // Recursively search nested shadow DOMs
-                    matches.push(...searchInShadowDOMs(element.shadowRoot, query, processedNodes, depth + 1));
+                    // Validate shadow root before searching
+                    if (element.shadowRoot instanceof ShadowRoot) {
+                        const shadowMatches = searchInDocument(element.shadowRoot, query, processedNodes);
+                        if (shadowMatches && shadowMatches.length > 0) {
+                            matches.push(...shadowMatches);
+                        }
+                        
+                        // Recursively search nested shadow DOMs
+                        const nestedMatches = searchInShadowDOMs(element.shadowRoot, query, processedNodes, depth + 1);
+                        if (nestedMatches && nestedMatches.length > 0) {
+                            matches.push(...nestedMatches);
+                        }
+                    }
                 }
             } catch (shadowError) {
-                // Shadow root might not be accessible, continue
-                console.debug('SmartFind: Shadow root not accessible for search:', shadowError);
+                // Shadow root might not be accessible or search failed, continue silently
+                // Only log occasionally to prevent console spam
+                if (Math.random() < 0.01) {
+                    console.debug('SmartFind: Shadow root search failed (sample error):', shadowError.message);
+                }
             }
         }
         
@@ -1144,13 +1534,19 @@ function searchInIframes(query, processedNodes) {
         for (const iframe of iframes) {
             try {
                 // Only try to access same-origin iframes
-                if (iframe.contentDocument) {
-                    console.log('SmartFind: Searching in iframe');
-                    matches.push(...searchInDocument(iframe.contentDocument, query, processedNodes));
+                if (iframe.contentDocument && iframe.contentDocument instanceof Document) {
+                    log(' Searching in iframe');
+                    const iframeMatches = searchInDocument(iframe.contentDocument, query, processedNodes);
+                    if (iframeMatches && iframeMatches.length > 0) {
+                        matches.push(...iframeMatches);
+                    }
                 }
             } catch (iframeError) {
-                // Cross-origin iframe, skip
-                console.debug('SmartFind: Cannot search iframe (likely cross-origin):', iframeError);
+                // Cross-origin iframe or search failed, skip silently
+                // Only log occasionally to prevent console spam
+                if (Math.random() < 0.01) {
+                    console.debug('SmartFind: Iframe search failed (sample error):', iframeError.message);
+                }
             }
         }
         
@@ -1163,7 +1559,7 @@ function searchInIframes(query, processedNodes) {
 
 // Perform AI-enhanced search with improved selectivity
 function performAISearch(aiResult) {
-    console.log('SmartFind: Performing AI search with result:', aiResult);
+    log(' Performing AI search with result:', aiResult);
     clearHighlights();
     
     if (!aiResult) {
@@ -1173,32 +1569,32 @@ function performAISearch(aiResult) {
     
     // Handle both single results (string) and multiple results (array)
     const aiResults = Array.isArray(aiResult) ? aiResult : [aiResult];
-    console.log('SmartFind: Processing', aiResults.length, 'AI results:', aiResults);
+    log(' Processing', aiResults.length, 'AI results:', aiResults);
     
     let allMatches = [];
     
     // Process each AI result with improved matching
     for (const result of aiResults) {
-        console.log('SmartFind: Processing AI result:', result);
+        log(' Processing AI result:', result);
         
         // Skip very short or generic results
         if (result.length < 3 || isGenericResult(result)) {
-            console.log('SmartFind: Skipping generic or short result:', result);
+            log(' Skipping generic or short result:', result);
             continue;
         }
         
         // Find exact matches first (preferred)
         const exactMatches = findTextInDOM(result);
-        console.log('SmartFind: Exact matches found:', exactMatches.length);
+        log(' Exact matches found:', exactMatches.length);
         
         if (exactMatches.length > 0) {
-            console.log('SmartFind: Found exact matches for:', result);
+            log(' Found exact matches for:', result);
             allMatches.push(...exactMatches.map(match => ({ ...match, matchType: 'exact' })));
         } else {
             // If exact match not found, try fuzzy matching with more lenient criteria
-            console.log('SmartFind: Trying fuzzy matching for:', result);
+            log(' Trying fuzzy matching for:', result);
             const fuzzyMatches = findFuzzyMatches(result);
-            console.log('SmartFind: Fuzzy matches found:', fuzzyMatches.length);
+            log(' Fuzzy matches found:', fuzzyMatches.length);
             
             // For shorter results (likely names, emails, etc.), be more lenient
             const isShortResult = result.length < 50;
@@ -1211,17 +1607,17 @@ function performAISearch(aiResult) {
             );
             
             if (qualityMatches.length > 0) {
-                console.log('SmartFind: Found quality fuzzy matches:', qualityMatches.length);
+                log(' Found quality fuzzy matches:', qualityMatches.length);
                 allMatches.push(...qualityMatches.map(match => ({ ...match, matchType: 'fuzzy' })));
             } else {
-                console.log('SmartFind: No quality matches found for:', result);
+                log(' No quality matches found for:', result);
                 
                 // For very short results (like names), try word-by-word search
                 if (isShortResult && result.split(/\s+/).length <= 3) {
-                    console.log('SmartFind: Trying word-by-word search for short result:', result);
+                    log(' Trying word-by-word search for short result:', result);
                     const wordMatches = findWordMatches(result);
                     if (wordMatches.length > 0) {
-                        console.log('SmartFind: Found word matches:', wordMatches.length);
+                        log(' Found word matches:', wordMatches.length);
                         allMatches.push(...wordMatches.map(match => ({ ...match, matchType: 'word' })));
                     }
                 }
@@ -1233,25 +1629,30 @@ function performAISearch(aiResult) {
     allMatches = removeDuplicateMatches(allMatches);
     allMatches = sortMatchesByQuality(allMatches);
     
-    console.log('SmartFind: Total matches after processing:', allMatches.length);
+    log(' Total matches after processing:', allMatches.length);
     
     // Limit the number of highlights to prevent performance issues and improve relevance
     const maxHighlights = 15; // Reduced from 20 for better selectivity
     if (allMatches.length > maxHighlights) {
-        console.log(`SmartFind: Limiting highlights to ${maxHighlights} out of ${allMatches.length} matches`);
+        log(` Limiting highlights to ${maxHighlights} out of ${allMatches.length} matches`);
         allMatches = allMatches.slice(0, maxHighlights);
     }
     
     if (allMatches.length > 0) {
         highlightMatches(allMatches, 'ai');
-        updateResultsDisplay(1, allMatches.length);
+        // Chrome-like behavior: immediately select first result  
         currentHighlightIndex = 0;
         scrollToHighlight(0);
-        console.log(`SmartFind: AI search completed - ${aiResults.length} AI results processed, ${allMatches.length} actual highlights found`);
+        updateResultsDisplay(1, allMatches.length);
+        log(` AI search completed - ${aiResults.length} AI results processed, ${allMatches.length} actual highlights found`);
+        
+        // Track when search completed to prevent immediate re-searches
+        lastSearchCompletedTime = Date.now();
+        
         return allMatches.length;
     } else {
         updateResultsDisplay(0, 0);
-        console.log(`SmartFind: AI search completed - ${aiResults.length} AI results processed, 0 actual highlights found`);
+        log(` AI search completed - ${aiResults.length} AI results processed, 0 actual highlights found`);
         return 0;
     }
 }
@@ -1392,20 +1793,20 @@ function findTextInDOM(searchText) {
     // For longer text or multi-word phrases, try styled element matching first
     // This handles text that spans across formatting better than cross-node matching
     if (searchText.length > 10 || searchText.includes(' ')) {
-        console.log('SmartFind: Trying styled element matching for formatted text');
+        log(' Trying styled element matching for formatted text');
         const styledMatches = findTextInStyledElements(searchText);
         if (styledMatches.length > 0) {
-            console.log('SmartFind: Found matches in styled elements:', styledMatches.length);
+            log(' Found matches in styled elements:', styledMatches.length);
             return styledMatches;
         }
     }
     
     // Try cross-node matching as fallback
     if (searchText.length > 15) {
-        console.log('SmartFind: Trying cross-node matching for longer text:', searchText.substring(0, 100) + '...');
+        log(' Trying cross-node matching for longer text:', searchText.substring(0, 100) + '...');
         const crossNodeMatches = findTextAcrossNodes(searchText);
         if (crossNodeMatches.length > 0) {
-            console.log('SmartFind: Found cross-node matches:', crossNodeMatches.length);
+            log(' Found cross-node matches:', crossNodeMatches.length);
             return crossNodeMatches;
         }
     }
@@ -1418,10 +1819,18 @@ function findTextInStyledElements(searchText) {
     const matches = [];
     const searchLower = searchText.toLowerCase();
     
-    // Find all elements that commonly contain styled text
-    const styledElements = document.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6, li, td, th, blockquote, article, section');
+    // Find all elements that commonly contain styled text, with special focus on Wikipedia elements
+    const styledElements = document.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6, li, td, th, blockquote, article, section, .mw-parser-output, .mw-content-text');
     
     for (const element of styledElements) {
+        // Skip Wikipedia citation and reference elements
+        if (element.classList.contains('reference') || 
+            element.classList.contains('citation') ||
+            element.classList.contains('mw-editsection') ||
+            element.querySelector('.reference, .citation, .mw-editsection')) {
+            continue;
+        }
+        
         // Get the combined text content of the element
         const elementText = element.textContent;
         if (!elementText || elementText.length < searchText.length) {
@@ -1532,7 +1941,7 @@ function findMatchInElementNodes(element, startOffset, length, originalText) {
     return null;
 }
 
-// Find text matches within single text nodes (enhanced for styled content)
+// Find text matches within single text nodes - enhanced with hidden content filtering
 function findTextInSingleNodes(searchText) {
     const matches = [];
     const walker = document.createTreeWalker(
@@ -1540,11 +1949,36 @@ function findTextInSingleNodes(searchText) {
         NodeFilter.SHOW_TEXT,
         {
             acceptNode: function(node) {
+                // Check parent element
                 const parent = node.parentElement;
-                if (parent && (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE' || parent.tagName === 'NOSCRIPT')) {
+                if (!parent) return NodeFilter.FILTER_REJECT;
+                
+                // Skip script, style, and other non-content elements
+                const tagName = parent.tagName?.toLowerCase();
+                if (['script', 'style', 'noscript', 'template', 'head'].includes(tagName)) {
                     return NodeFilter.FILTER_REJECT;
                 }
-                // Accept all text nodes, including those in styled elements
+                
+                // Enhanced hidden content detection like Chrome
+                try {
+                    // Check computed styles for visibility
+                    const style = window.getComputedStyle(parent);
+                    if (style.display === 'none' || 
+                        style.visibility === 'hidden' ||
+                        style.opacity === '0') {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    
+                    // Check if element has zero dimensions (collapsed)
+                    const rect = parent.getBoundingClientRect();
+                    if (rect.width === 0 && rect.height === 0) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    
+                } catch (styleError) {
+                    // If we can't get computed style, include the node (fail-safe)
+                }
+                
                 return NodeFilter.FILTER_ACCEPT;
             }
         }
@@ -1554,8 +1988,8 @@ function findTextInSingleNodes(searchText) {
     while (node = walker.nextNode()) {
         const text = node.textContent;
         
-        // Skip very short text nodes (likely whitespace)
-        if (text.trim().length < 1) {
+        // Skip empty or whitespace-only text nodes
+        if (!text || !text.trim() || text.trim().length < 1) {
             continue;
         }
         
@@ -1610,6 +2044,17 @@ function findTextAcrossNodes(searchText) {
                 if (parent && (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE' || parent.tagName === 'NOSCRIPT')) {
                     return NodeFilter.FILTER_REJECT;
                 }
+                
+                // Skip Wikipedia citation markers and edit links
+                if (parent && (
+                    parent.classList.contains('reference') ||
+                    parent.classList.contains('citation') ||
+                    parent.classList.contains('mw-editsection') ||
+                    parent.tagName === 'SUP' && parent.querySelector('a[href*="#cite"]')
+                )) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                
                 // Include all text nodes, even small ones (important for styled content)
                 if (node.textContent.trim().length < 1) {
                     return NodeFilter.FILTER_REJECT;
@@ -1618,13 +2063,15 @@ function findTextAcrossNodes(searchText) {
             }
         }
     );
-    
+
     let node;
     while (node = walker.nextNode()) {
         textNodes.push({
             node: node,
             text: node.textContent,
-            textLower: node.textContent.toLowerCase()
+            textLower: node.textContent.toLowerCase(),
+            isInLink: node.parentElement && node.parentElement.closest('a'),
+            isInFormatting: node.parentElement && node.parentElement.closest('i, b, em, strong, span[style*="italic"], span[style*="bold"]')
         });
     }
     
@@ -1633,21 +2080,45 @@ function findTextAcrossNodes(searchText) {
         let combinedText = '';
         let nodeSpan = [];
         
-        // Try combining up to 12 consecutive nodes for better styled content support
-        for (let j = i; j < Math.min(i + 12, textNodes.length); j++) {
+        // Try combining up to 15 consecutive nodes for better Wikipedia support
+        for (let j = i; j < Math.min(i + 15, textNodes.length); j++) {
             const currentNode = textNodes[j];
             
-            // Add node text to combined text - handle spacing more intelligently
+            // Add node text to combined text - handle spacing more intelligently for Wikipedia
             if (j === i) {
                 combinedText += currentNode.text;
             } else {
-                // Check if we need spacing based on the content
+                // Check if we need spacing based on the content and formatting context
                 const prevText = combinedText.trim();
                 const currentText = currentNode.text.trim();
+                const prevNode = textNodes[j-1];
                 
                 if (prevText && currentText) {
-                    // Add space unless the previous text ends with punctuation or the current starts with punctuation
-                    const needsSpace = !/[.!?;:,)\]}]$/.test(prevText) && !/^[.!?;:,(\[{]/.test(currentText);
+                    // Special handling for Wikipedia formatting
+                    let needsSpace = true;
+                    
+                    // No space needed if previous text ends with punctuation
+                    if (/[.!?;:,)\]}]$/.test(prevText)) {
+                        needsSpace = false;
+                    }
+                    // No space needed if current text starts with punctuation
+                    else if (/^[.!?;:,(\[{]/.test(currentText)) {
+                        needsSpace = false;
+                    }
+                    // No space needed between link text and following punctuation
+                    else if (prevNode.isInLink && /^[.!?;:,)\]}]/.test(currentText)) {
+                        needsSpace = false;
+                    }
+                    // No space needed if we're continuing within the same formatting context
+                    else if (prevNode.isInFormatting && currentNode.isInFormatting) {
+                        // Check if they're in the same formatting element
+                        const prevParent = prevNode.node.parentElement.closest('i, b, em, strong');
+                        const currentParent = currentNode.node.parentElement.closest('i, b, em, strong');
+                        if (prevParent === currentParent) {
+                            needsSpace = false;
+                        }
+                    }
+                    
                     combinedText += (needsSpace ? ' ' : '') + currentNode.text;
                 } else {
                     combinedText += currentNode.text;
@@ -1669,7 +2140,7 @@ function findTextAcrossNodes(searchText) {
                 const match = createCrossNodeMatch(nodeSpan, matchIndex, searchText.length, searchText);
                 if (match) {
                     matches.push(match);
-                    console.log('SmartFind: Found cross-node match spanning', nodeSpan.length, 'nodes for styled content');
+                    log(' Found cross-node match spanning', nodeSpan.length, 'nodes for styled content');
                 }
                 
                 searchIndex = matchIndex + 1;
@@ -1679,12 +2150,12 @@ function findTextAcrossNodes(searchText) {
             }
             
             // Stop if combined text is getting too long relative to search text
-            if (combinedText.length > searchText.length * 6) {
+            if (combinedText.length > searchText.length * 8) {
                 break;
             }
             
             // For short search text, don't span too many nodes
-            if (searchText.length < 30 && nodeSpan.length > 6) {
+            if (searchText.length < 30 && nodeSpan.length > 8) {
                 break;
             }
             
@@ -1693,7 +2164,7 @@ function findTextAcrossNodes(searchText) {
         }
         
         // Limit the total number of matches to prevent performance issues
-        if (matches.length >= 8) {
+        if (matches.length >= 10) {
             break;
         }
     }
@@ -1922,6 +2393,19 @@ function findBestMatchingPhrase(aiResult, text) {
 function removeDuplicateMatches(matches) {
     const seen = new Set();
     return matches.filter(match => {
+        // First validate the match is valid
+        if (!match || typeof match !== 'object' || !match.node || !match.node.textContent) {
+            return false; // Skip silently - invalid match
+        }
+        
+        // Check for valid range
+        const nodeLength = match.node.textContent.length;
+        if (typeof match.start !== 'number' || typeof match.end !== 'number' ||
+            match.start < 0 || match.end < 0 || match.start >= match.end || match.end > nodeLength) {
+            return false; // Skip silently - invalid range
+        }
+        
+        // Check for duplicates
         const key = `${match.node.textContent}-${match.start}-${match.end}`;
         if (seen.has(key)) {
             return false;
@@ -1931,68 +2415,150 @@ function removeDuplicateMatches(matches) {
     });
 }
 
-// Highlight matches in the DOM
+// Highlight matches with improved error handling and Chrome-like behavior
 function highlightMatches(matches, searchType = 'keyword') {
-    clearHighlights();
-    
-    matches.forEach((match, index) => {
-        try {
-            // Handle cross-node matches differently
-            if (match.matchType === 'cross-node' && match.crossNodeMatches) {
-                console.log('SmartFind: Highlighting cross-node match with', match.crossNodeMatches.length, 'parts');
-                highlightCrossNodeMatch(match.crossNodeMatches, index, searchType);
-                return;
-            }
-            
-            // Standard single-node highlighting
-            // Validate the match before creating range
-            if (!match.node || !match.node.textContent) {
-                console.warn('SmartFind: Invalid match node:', match);
-                return;
-            }
-            
-            const nodeLength = match.node.textContent.length;
-            const start = Math.max(0, Math.min(match.start, nodeLength));
-            const end = Math.max(start, Math.min(match.end, nodeLength));
-            
-            // Skip if invalid range
-            if (start >= end || start >= nodeLength) {
-                console.warn('SmartFind: Invalid range:', { start, end, nodeLength, match });
-                return;
-            }
-            
-            // Create highlight element
-            const highlight = document.createElement('span');
-            if (searchType === 'ai') {
-                highlight.className = 'smartfind-highlight smartfind-ai-highlight smartfind-new';
-            } else {
-                highlight.className = 'smartfind-highlight smartfind-keyword-highlight smartfind-new';
-            }
-            highlight.setAttribute('data-smartfind-index', index);
-            
-            // Try to create highlight with robust method that handles styled text
-            if (createRobustHighlight(match.node, start, end, highlight)) {
-                currentHighlights.push(highlight);
-                
-                // Remove the animation class after animation completes
-                setTimeout(() => {
-                    highlight.classList.remove('smartfind-new');
-                }, 200);
-            }
-            
-        } catch (e) {
-            // If highlighting fails, log the error but continue
-            console.warn('SmartFind: Failed to highlight match:', e, match);
-        }
+    // Filter out invalid matches before processing to prevent console spam
+    const validMatches = matches.filter(match => {
+        if (!match || typeof match !== 'object') return false;
+        if (!match.node || !match.node.textContent) return false;
+        if (typeof match.start !== 'number' || typeof match.end !== 'number') return false;
+        if (match.start < 0 || match.end <= match.start) return false;
+        if (match.start >= match.node.textContent.length || match.end > match.node.textContent.length) return false;
+        return true;
     });
     
-    totalMatches = currentHighlights.length;
-    console.log('SmartFind: Highlighted', totalMatches, 'matches');
+    // Only log if there's a significant difference
+    const invalidCount = matches.length - validMatches.length;
+    if (invalidCount > 0) {
+        log(` Filtered ${invalidCount} invalid matches, processing ${validMatches.length} valid matches`);
+        
+        // If we're getting too many invalid matches, something might be wrong
+        if (invalidCount > 100) {
+            console.warn('SmartFind: Too many invalid matches detected, potential data corruption');
+            updateResultsDisplay(0, 0);
+            return; // Skip highlighting to prevent performance issues
+        }
+    } else {
+        log(` Highlighting ${validMatches.length} matches`);
+    }
+    
+    // PREVENT INFINITE LOOPS: Set flag when we're modifying DOM
+    isSmartFindModifyingDOM = true;
+    
+    try {
+        clearHighlights(); // Remove previous highlights
+        currentHighlights = [];
+        totalMatches = validMatches.length;
+        
+        if (validMatches.length === 0) {
+            updateResultsDisplay(0, 0);
+            return;
+        }
+        
+        // Group matches by their match index for cross-node highlighting
+        const matchGroups = new Map();
+        
+        validMatches.forEach((match, index) => {
+            if (match.matchIndex !== undefined) {
+                // This is part of a cross-node match
+                if (!matchGroups.has(match.matchIndex)) {
+                    matchGroups.set(match.matchIndex, []);
+                }
+                matchGroups.get(match.matchIndex).push({ ...match, partIndex: index });
+            } else {
+                // Regular single-node match
+                try {
+                    // Validate match object structure
+                    if (!match || typeof match !== 'object') {
+                        return; // Skip silently - invalid match object
+                    }
+                    
+                    if (!match.node || !match.node.textContent || 
+                        typeof match.start !== 'number' || typeof match.end !== 'number') {
+                        return; // Skip silently - invalid match properties
+                    }
+                    
+                    const nodeLength = match.node.textContent.length;
+                    const start = Math.max(0, Math.min(match.start, nodeLength));
+                    const end = Math.max(start, Math.min(match.end, nodeLength));
+                    
+                    // Skip if invalid range (zero-length or out of bounds)
+                    if (start >= end || start >= nodeLength || end > nodeLength) {
+                        return; // Skip silently - invalid range
+                    }
+                    
+                    // Create highlight element
+                    const highlight = document.createElement('span');
+                    if (searchType === 'ai') {
+                        highlight.className = 'smartfind-highlight smartfind-ai-highlight smartfind-new';
+                    } else {
+                        highlight.className = 'smartfind-highlight smartfind-keyword-highlight smartfind-new';
+                    }
+                    highlight.setAttribute('data-smartfind-index', index);
+                    
+                    // Use robust highlighting
+                    if (createRobustHighlight(match.node, start, end, highlight)) {
+                        currentHighlights.push(highlight);
+                        
+                        // Remove the animation class after animation completes
+                        setTimeout(() => {
+                            highlight.classList.remove('smartfind-new');
+                        }, 200);
+                    }
+                    
+                } catch (e) {
+                    // Silently skip failed highlights to prevent console spam
+                    // Only log critical errors occasionally
+                    if (Math.random() < 0.01) { // Log only 1% of errors
+                        console.warn('SmartFind: Failed to highlight match (sample error):', e.message);
+                    }
+                }
+            }
+        });
+        
+        // Handle cross-node matches
+        matchGroups.forEach((nodeMatches, matchIndex) => {
+            highlightCrossNodeMatch(nodeMatches, matchIndex, searchType);
+        });
+        
+        log(' Highlighted', currentHighlights.length, 'matches');
+        
+    } catch (error) {
+        console.error('SmartFind: Error in highlightMatches:', error);
+    } finally {
+        // CRITICAL: Reset flag after DOM modifications are complete
+        // Use a longer delay to ensure all DOM changes and mutations have been processed
+        setTimeout(() => {
+            isSmartFindModifyingDOM = false;
+        }, 500); // Increased delay to ensure all mutations are processed
+    }
 }
 
 // Create a robust highlight that handles styled text (italics, bold, etc.)
 function createRobustHighlight(textNode, start, end, highlight) {
     try {
+        // Validate inputs first
+        if (!textNode || !textNode.textContent || 
+            typeof start !== 'number' || typeof end !== 'number' ||
+            start < 0 || end <= start || end > textNode.textContent.length ||
+            !highlight) {
+            return false; // Skip silently - invalid parameters
+        }
+        
+        // Check if the text node is inside a link or other interactive element
+        const parentElement = textNode.parentElement;
+        const isInInteractiveElement = parentElement && (
+            parentElement.tagName === 'A' || 
+            parentElement.tagName === 'BUTTON' ||
+            parentElement.closest('a, button, [onclick], [role="button"]')
+        );
+        
+        // For interactive elements, use a more careful approach
+        if (isInInteractiveElement) {
+            log(' Highlighting text inside interactive element, using careful approach');
+            return createHighlightInInteractiveElement(textNode, start, end, highlight);
+        }
+        
         // First try the standard approach - it works for most cases
         try {
             const range = document.createRange();
@@ -2002,16 +2568,67 @@ function createRobustHighlight(textNode, start, end, highlight) {
             return true;
         } catch (surroundError) {
             // If surroundContents fails (likely due to styled content), fall back to manual splitting
-            console.log('SmartFind: surroundContents failed, using text splitting method for styled content');
+            log(' surroundContents failed, using text splitting method for styled content');
             return createHighlightWithSplitting(textNode, start, end, highlight);
         }
         
     } catch (e) {
-        console.warn('SmartFind: Failed to create robust highlight:', e);
+        // Rate limit error logging to prevent console spam
+        if (Math.random() < 0.01) {
+            console.warn('SmartFind: Failed to create robust highlight (sample error):', e.message);
+        }
         return false;
     }
 }
 
+// Special handling for highlights inside interactive elements like links
+function createHighlightInInteractiveElement(textNode, start, end, highlight) {
+    try {
+        // For links and buttons, we want to preserve their functionality
+        // So we'll use a more subtle highlighting approach
+        const originalText = textNode.textContent;
+        const beforeText = originalText.substring(0, start);
+        const matchText = originalText.substring(start, end);
+        const afterText = originalText.substring(end);
+        
+        // Set the highlight content
+        highlight.textContent = matchText;
+        
+        // Add a special class for interactive element highlights
+        highlight.classList.add('smartfind-interactive-highlight');
+        
+        // Get the parent element
+        const parent = textNode.parentNode;
+        if (!parent) {
+            return false;
+        }
+        
+        // Create new text nodes for before and after text
+        const beforeNode = beforeText ? document.createTextNode(beforeText) : null;
+        const afterNode = afterText ? document.createTextNode(afterText) : null;
+        
+        // Insert nodes in the correct order
+        if (beforeNode) {
+            parent.insertBefore(beforeNode, textNode);
+        }
+        parent.insertBefore(highlight, textNode);
+        if (afterNode) {
+            parent.insertBefore(afterNode, textNode);
+        }
+        
+        // Remove the original text node
+        parent.removeChild(textNode);
+        
+        return true;
+        
+    } catch (e) {
+        // Rate limit error logging to prevent console spam
+        if (Math.random() < 0.01) {
+            console.warn('SmartFind: Failed to create highlight in interactive element (sample error):', e.message);
+        }
+        return false;
+    }
+}
 
 // Create highlight by manually splitting text nodes
 function createHighlightWithSplitting(textNode, start, end, highlight) {
@@ -2049,7 +2666,10 @@ function createHighlightWithSplitting(textNode, start, end, highlight) {
         return true;
         
     } catch (e) {
-        console.warn('SmartFind: Failed to create highlight with splitting:', e);
+        // Rate limit error logging to prevent console spam
+        if (Math.random() < 0.01) {
+            console.warn('SmartFind: Failed to create highlight with splitting (sample error):', e.message);
+        }
         return false;
     }
 }
@@ -2058,19 +2678,20 @@ function createHighlightWithSplitting(textNode, start, end, highlight) {
 function highlightCrossNodeMatch(nodeMatches, matchIndex, searchType) {
     nodeMatches.forEach((nodeMatch, partIndex) => {
         try {
-            if (!nodeMatch.node || !nodeMatch.node.textContent) {
-                console.warn('SmartFind: Invalid cross-node match part:', nodeMatch);
-                return;
+            // Validate cross-node match structure
+            if (!nodeMatch || typeof nodeMatch !== 'object' ||
+                !nodeMatch.node || !nodeMatch.node.textContent ||
+                typeof nodeMatch.start !== 'number' || typeof nodeMatch.end !== 'number') {
+                return; // Skip silently - invalid cross-node match
             }
             
             const nodeLength = nodeMatch.node.textContent.length;
             const start = Math.max(0, Math.min(nodeMatch.start, nodeLength));
             const end = Math.max(start, Math.min(nodeMatch.end, nodeLength));
             
-            // Skip if invalid range
-            if (start >= end || start >= nodeLength) {
-                console.warn('SmartFind: Invalid cross-node range:', { start, end, nodeLength, nodeMatch });
-                return;
+            // Skip if invalid range (zero-length or out of bounds)
+            if (start >= end || start >= nodeLength || end > nodeLength) {
+                return; // Skip silently - invalid cross-node range
             }
             
             // Create highlight element
@@ -2094,30 +2715,42 @@ function highlightCrossNodeMatch(nodeMatches, matchIndex, searchType) {
             }
             
         } catch (e) {
-            console.warn('SmartFind: Failed to highlight cross-node match part:', e, nodeMatch);
+            // Silently skip failed cross-node highlights to prevent console spam
+            if (Math.random() < 0.01) { // Log only 1% of errors
+                console.warn('SmartFind: Failed to highlight cross-node match (sample error):', e.message);
+            }
         }
     });
 }
 
-// Clear all highlights
+// Clear all highlights - inline restoration like Chrome
 function clearHighlights() {
-    currentHighlights.forEach(highlight => {
-        const parent = highlight.parentNode;
-        if (parent) {
-            parent.replaceChild(document.createTextNode(highlight.textContent), highlight);
-            parent.normalize();
-        }
-    });
-    currentHighlights = [];
-    currentHighlightIndex = -1;
-    totalMatches = 0;
+    // PREVENT INFINITE LOOPS: Set flag when we're modifying DOM - keep it simple
+    if (currentHighlights.length === 0) {
+        return; // Nothing to clear
+    }
     
-    // Disable navigation buttons when no highlights
-    const prevBtn = document.getElementById('smartfind-prev');
-    const nextBtn = document.getElementById('smartfind-next');
-    if (prevBtn && nextBtn) {
-        prevBtn.disabled = true;
-        nextBtn.disabled = true;
+    isSmartFindModifyingDOM = true;
+    
+    try {
+        currentHighlights.forEach(highlight => {
+            const parent = highlight.parentNode;
+            if (parent) {
+                // Restore original text inline
+                parent.replaceChild(document.createTextNode(highlight.textContent), highlight);
+                parent.normalize(); // Merge adjacent text nodes for clean DOM
+            }
+        });
+        currentHighlights = [];
+        currentHighlightIndex = -1;
+        totalMatches = 0;
+    } catch (error) {
+        console.error('SmartFind: Error clearing highlights:', error);
+    } finally {
+        // Reset flag after DOM modifications - use setTimeout for more reliable timing
+        setTimeout(() => {
+            isSmartFindModifyingDOM = false;
+        }, 500); // Increased delay to ensure all mutations are processed
     }
 }
 
@@ -2130,7 +2763,7 @@ function navigateResults(direction) {
         currentHighlights[currentHighlightIndex].classList.remove('smartfind-current');
     }
     
-    // Calculate new index
+    // Calculate new index - Chrome-style cycling
     currentHighlightIndex += direction;
     if (currentHighlightIndex >= totalMatches) {
         currentHighlightIndex = 0;
@@ -2143,13 +2776,13 @@ function navigateResults(direction) {
     updateResultsDisplay(currentHighlightIndex + 1, totalMatches);
 }
 
-// Scroll to specific highlight
+// Scroll to specific highlight - instant like Chrome
 function scrollToHighlight(index) {
     if (index >= 0 && index < currentHighlights.length) {
         const highlight = currentHighlights[index];
         highlight.classList.add('smartfind-current');
         
-        // Scroll to the highlight with instant behavior for faster productivity
+        // Chrome uses instant scrolling for better productivity
         highlight.scrollIntoView({
             behavior: 'instant',
             block: 'center',
@@ -2158,7 +2791,7 @@ function scrollToHighlight(index) {
     }
 }
 
-// Update results display
+// Update results display - simplified to match Chrome behavior
 function updateResultsDisplay(current, total) {
     if (searchResults) {
         if (total === 0) {
@@ -2169,21 +2802,7 @@ function updateResultsDisplay(current, total) {
         }
     }
     
-    // Update button states
-    const prevBtn = document.getElementById('smartfind-prev');
-    const nextBtn = document.getElementById('smartfind-next');
-    
-    if (prevBtn && nextBtn) {
-        if (total <= 1) {
-            // Disable both buttons when there's 0 or 1 result
-            prevBtn.disabled = true;
-            nextBtn.disabled = true;
-        } else {
-            // Enable both buttons when there are multiple results
-            prevBtn.disabled = false;
-            nextBtn.disabled = false;
-        }
-    }
+    // Note: Removed button disable logic - Chrome allows navigation even with single results
 }
 
 // Set status message
@@ -2234,14 +2853,14 @@ function showSignInPrompt(errorMessage) {
     }
 }
 
-// Show payment option when user hits limit - redirect to sign in for more tokens
+// Show payment option when user hits limit - user is already signed in, just needs more tokens
 function showPaymentOption(errorMessage) {
     const statusElement = document.getElementById('smartfind-status');
     if (statusElement) {
         statusElement.innerHTML = `
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                <span>Sign in for more tokens</span>
-                <button id="smartfind-sign-in-more" style="
+                <span>Credits exhausted - Purchase more tokens</span>
+                <button id="smartfind-credit-action" style="
                     background: #0969da; 
                     color: white; 
                     border: none; 
@@ -2250,18 +2869,18 @@ function showPaymentOption(errorMessage) {
                     font-size: 11px; 
                     cursor: pointer;
                     white-space: nowrap;
-                ">Sign In</button>
+                ">Get Tokens</button>
             </div>
         `;
-        statusElement.className = 'smartfind-status info';
+        statusElement.className = 'smartfind-status error';
         statusElement.style.display = 'block';
         
-        // Add click handler for sign in button
-        const signInButton = document.getElementById('smartfind-sign-in-more');
-        if (signInButton) {
-            signInButton.addEventListener('click', () => {
+        // Add click handler for action button
+        const actionButton = document.getElementById('smartfind-credit-action');
+        if (actionButton) {
+            actionButton.addEventListener('click', () => {
                 chrome.runtime.sendMessage({ action: "openPopup" });
-                setStatus('Click the SmartFind extension icon to sign in', 'info');
+                setStatus('Click the SmartFind extension icon to purchase tokens', 'info');
             });
         }
     }
@@ -2269,18 +2888,18 @@ function showPaymentOption(errorMessage) {
 
 
 
-// Update placeholder text based on input
+// Update placeholder text based on input - simplified
 function updatePlaceholder() {
     if (!searchInput) return;
     
     const value = searchInput.value;
     
     if (value.startsWith('/')) {
-        searchInput.placeholder = 'Search with AI...';
+        searchInput.placeholder = 'AI search...';
     } else if (value.startsWith("'")) {
-        searchInput.placeholder = 'Search exact keywords...';
+        searchInput.placeholder = 'Exact search...';
     } else {
-        searchInput.placeholder = 'Search: exact or general...';
+        searchInput.placeholder = 'Search...';
     }
 }
 
@@ -2289,47 +2908,540 @@ function escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Show loading state for AI search
+// Show loading state for AI search - minimal like Chrome
 function setAISearchLoadingState() {
     const resultsElement = document.getElementById('smartfind-results');
     if (resultsElement) {
         resultsElement.textContent = '...';
-        resultsElement.style.color = '#0969da';
-        resultsElement.style.fontWeight = '500';
     }
-    
-    // Optionally show subtle status message
-    setStatus('AI searching...', 'info');
 }
 
-// Clear loading state for AI search
+// Clear loading state for AI search - minimal like Chrome
 function clearAISearchLoadingState() {
-    const resultsElement = document.getElementById('smartfind-results');
-    if (resultsElement) {
-        resultsElement.style.color = '';
-        resultsElement.style.fontWeight = '';
-    }
-    
-    // Clear status message
-    setStatus('');
+    // Status clears automatically when results are shown
 }
 
-// Show empty results state for AI search
+// Show empty results state for AI search - minimal like Chrome
 function setAIEmptyResultsState() {
     updateResultsDisplay(0, 0);
+}
+
+// Handle search for a specific query (used by both user input and dynamic re-search)
+async function handleSearchForQuery(rawQuery) {
+    log('handleSearchForQuery called with:', rawQuery);
     
-    // Add subtle visual feedback in the results area
-    const resultsElement = document.getElementById('smartfind-results');
-    if (resultsElement) {
-        resultsElement.style.color = '#656d76';
-        resultsElement.style.fontStyle = 'italic';
-        
-        // Reset style after a moment
-        setTimeout(() => {
-            if (resultsElement) {
-                resultsElement.style.color = '';
-                resultsElement.style.fontStyle = '';
-            }
-        }, 2000);
+    // CRITICAL: Prevent infinite loops by setting flag during search
+    if (isSearchingInProgress) {
+        return;
     }
+    
+    isSearchingInProgress = true; // Set flag to prevent mutation-triggered re-searches
+    
+    try {
+        lastQuery = rawQuery;
+        activeQuery = rawQuery; // Set active query for dynamic re-search
+        
+        // Track meaningful queries (2+ chars) for dynamic re-search
+        if (rawQuery && rawQuery.length >= 2) {
+            lastMeaningfulQuery = rawQuery;
+        }
+        
+        log('Set activeQuery to:', activeQuery);
+        
+        // Parse search mode and clean query
+        const searchMode = parseSearchMode(rawQuery);
+        const query = searchMode.cleanQuery;
+        
+        log(' Search mode:', searchMode.mode, 'Clean query:', query);
+        
+        isSearching = true;
+        
+        try {
+            if (searchMode.mode === 'forceKeyword') {
+                // Force keyword search with ' prefix
+                log(' Forcing keyword search');
+                setInputStyling('keyword', true);
+                performNativeSearch(query);
+            } else if (searchMode.mode === 'forceAI') {
+                // Force AI search with / prefix
+                log(' Forcing AI search');
+                setInputStyling('ai', true);
+                await performForcedAISearch(query);
+            } else {
+                // Progressive search: keyword first for immediate response, then AI if no matches
+                log(' Starting progressive search - trying keyword first');
+                resetInputStyling();
+                
+                const keywordResults = performNativeSearch(query);
+                
+                if (keywordResults === 0) {
+                    // No exact matches - schedule AI search after user stops typing
+                    log(' No keyword matches, scheduling AI search...');
+                    debouncedAISearch(query);
+                }
+            }
+        } catch (error) {
+            console.error('SmartFind search error:', error);
+            
+            // Simple error handling - fallback to keyword search
+            try {
+                performNativeSearch(query);
+                setStatus('Using keyword search', 'warning');
+            } catch (fallbackError) {
+                console.error('SmartFind: Fallback search also failed:', fallbackError);
+                setStatus('Search unavailable - please refresh page', 'error');
+            }
+            resetInputStyling();
+        }
+        
+        isSearching = false;
+        log('Search completed. ActiveQuery is still:', activeQuery);
+        
+    } finally {
+        // CRITICAL: Always clear the flag, even if search fails
+        isSearchingInProgress = false;
+    }
+}
+
+// Show extended search confirmation prompt
+function showExtendedSearchPrompt(query, estimatedTokens = 3) {
+    
+    const statusElement = document.getElementById('smartfind-status');
+    if (statusElement) {
+        statusElement.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <span>Smart Search? ~${estimatedTokens} tokens</span>
+                <span style="font-size: 11px; color: #656d76;">Enter to continue</span>
+            </div>
+        `;
+        statusElement.className = 'smartfind-status info';
+        statusElement.style.display = 'block';
+    }
+    
+    // Set the waiting state
+    isWaitingForExtendedConfirmation = true;
+    pendingExtendedSearch = { query, estimatedTokens };
+}
+
+// Clear extended search prompt
+function clearExtendedSearchPrompt() {
+    
+    isWaitingForExtendedConfirmation = false;
+    pendingExtendedSearch = null;
+    setStatus('');
+    
+}
+
+// Check if content requires extended search
+function requiresExtendedSearch(content, query) {
+    // Always check content length first
+    if (content.length <= CONTENT_EXTRACTION_CONFIG.extendedSearchThreshold) {
+        return false;
+    }
+    
+    // For forced AI searches (/query), don't prompt - user already committed
+    if (query.startsWith('/')) {
+        return false;
+    }
+    
+    // For natural language queries on large content, suggest extended search
+    return true;
+}
+
+// Estimate tokens needed for extended search
+function estimateExtendedSearchTokens(content) {
+    const chunks = Math.min(
+        Math.ceil(content.length / CONTENT_EXTRACTION_CONFIG.chunkSize),
+        CONTENT_EXTRACTION_CONFIG.maxChunks
+    );
+    return Math.max(2, chunks); // Minimum 2, maximum based on chunks
+}
+
+// Smart content chunking with keyword pre-filtering
+function createSmartChunks(content, query) {
+    log('Creating smart chunks for content length:', content.length);
+    
+    // Step 1: Split content into semantic sections
+    const sections = splitIntoSemanticSections(content);
+    log('Split into', sections.length, 'semantic sections');
+    
+    // Step 2: Create chunks with optimal size
+    const chunks = [];
+    let currentChunk = '';
+    let currentChunkSections = [];
+    
+    for (const section of sections) {
+        // If adding this section would exceed chunk size, finalize current chunk
+        if (currentChunk.length + section.length > CONTENT_EXTRACTION_CONFIG.chunkSize && currentChunk.length > 0) {
+            chunks.push({
+                content: currentChunk.trim(),
+                sections: currentChunkSections,
+                startIndex: chunks.length
+            });
+            currentChunk = '';
+            currentChunkSections = [];
+        }
+        
+        currentChunk += section + '\n\n';
+        currentChunkSections.push(section);
+        
+        // If we've reached max chunks, break
+        if (chunks.length >= CONTENT_EXTRACTION_CONFIG.maxChunks - 1) {
+            break;
+        }
+    }
+    
+    // Add the last chunk
+    if (currentChunk.trim().length > 0) {
+        chunks.push({
+            content: currentChunk.trim(),
+            sections: currentChunkSections,
+            startIndex: chunks.length
+        });
+    }
+    
+    // Step 3: Pre-filter chunks by keyword relevance
+    const filteredChunks = prefilterChunksByKeywords(chunks, query);
+    log('Filtered to', filteredChunks.length, 'relevant chunks');
+    
+    return filteredChunks.slice(0, CONTENT_EXTRACTION_CONFIG.maxChunks);
+}
+
+// Split content into semantic sections
+function splitIntoSemanticSections(content) {
+    const sections = [];
+    
+    // Split by multiple paragraph breaks first
+    let parts = content.split(/\n\s*\n\s*\n/);
+    
+    for (const part of parts) {
+        if (part.trim().length < 50) continue;
+        
+        // Further split by headings or strong separators
+        const subParts = part.split(/(?=\n[A-Z][^\n]{10,100}\n)|(?=\n\d+\.\s)|(?=\n[•\-\*]\s)/);
+        
+        for (const subPart of subParts) {
+            const trimmed = subPart.trim();
+            if (trimmed.length >= 100) { // Minimum section size
+                sections.push(trimmed);
+            }
+        }
+    }
+    
+    // If we don't have good semantic sections, split by size
+    if (sections.length < 3) {
+        log('Falling back to size-based chunking');
+        return splitBySize(content, CONTENT_EXTRACTION_CONFIG.chunkSize);
+    }
+    
+    return sections;
+}
+
+// Fallback: split content by size with sentence boundaries
+function splitBySize(content, chunkSize) {
+    const chunks = [];
+    const sentences = content.split(/(?<=[.!?])\s+/);
+    let currentChunk = '';
+    
+    for (const sentence of sentences) {
+        if (currentChunk.length + sentence.length > chunkSize && currentChunk.length > 0) {
+            chunks.push(currentChunk.trim());
+            currentChunk = '';
+        }
+        currentChunk += sentence + ' ';
+    }
+    
+    if (currentChunk.trim().length > 0) {
+        chunks.push(currentChunk.trim());
+    }
+    
+    return chunks;
+}
+
+// Pre-filter chunks based on keyword relevance
+function prefilterChunksByKeywords(chunks, query) {
+    // Extract meaningful keywords from query
+    const keywords = extractKeywords(query);
+    if (keywords.length === 0) {
+        // If no keywords, return all chunks (probably a very natural language query)
+        return chunks;
+    }
+    
+    log('Extracted keywords:', keywords);
+    
+    // Score each chunk
+    const scoredChunks = chunks.map(chunk => {
+        const score = calculateKeywordScore(chunk.content, keywords);
+        return { ...chunk, relevanceScore: score };
+    });
+    
+    // Sort by relevance score
+    scoredChunks.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    
+    // Filter out chunks with very low scores, but always keep at least 2 chunks
+    const threshold = CONTENT_EXTRACTION_CONFIG.keywordPrefilterThreshold;
+    const relevantChunks = scoredChunks.filter(chunk => chunk.relevanceScore >= threshold);
+    
+    if (relevantChunks.length >= 2) {
+        return relevantChunks;
+    } else {
+        // Keep top chunks even if below threshold
+        return scoredChunks.slice(0, Math.max(2, Math.min(chunks.length, 3)));
+    }
+}
+
+// Extract meaningful keywords from query
+function extractKeywords(query) {
+    // Remove common prefixes
+    const cleanQuery = query.replace(/^[\/'"]/, '').toLowerCase();
+    
+    // Split into words and filter
+    const words = cleanQuery.split(/\s+/).filter(word => {
+        return word.length >= 3 && 
+               !['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use'].includes(word);
+    });
+    
+    // Also extract phrases (2-3 words)
+    const phrases = [];
+    for (let i = 0; i < words.length - 1; i++) {
+        if (words[i].length >= 3 && words[i + 1].length >= 3) {
+            phrases.push(words[i] + ' ' + words[i + 1]);
+        }
+    }
+    
+    return [...words, ...phrases];
+}
+
+// Calculate keyword relevance score for a chunk
+function calculateKeywordScore(content, keywords) {
+    const contentLower = content.toLowerCase();
+    const totalWords = content.split(/\s+/).length;
+    let matchCount = 0;
+    
+    for (const keyword of keywords) {
+        const keywordLower = keyword.toLowerCase();
+        // Count occurrences, giving more weight to exact matches
+        const exactMatches = (contentLower.match(new RegExp('\\b' + escapeRegExp(keywordLower) + '\\b', 'g')) || []).length;
+        const partialMatches = (contentLower.match(new RegExp(escapeRegExp(keywordLower), 'g')) || []).length - exactMatches;
+        
+        matchCount += exactMatches * 2 + partialMatches * 0.5;
+    }
+    
+    // Return ratio of matches to total words
+    return matchCount / totalWords;
+}
+
+// Perform extended AI search with parallel chunk processing
+async function performExtendedAISearch(query) {
+    const content = extractPageContent();
+    
+    // Create smart chunks
+    const chunks = createSmartChunks(content, query);
+    log(`Performing extended search with ${chunks.length} chunks`);
+    
+    // Show loading state
+    setStatus(`Searching ${chunks.length} sections...`, 'loading');
+    setAISearchLoadingState();
+    
+    try {
+        // Perform parallel AI searches
+        const searchPromises = chunks.map((chunk, index) => 
+            performChunkSearch(query, chunk, index)
+        );
+        
+        const results = await Promise.all(searchPromises);
+        
+        // Clear loading state
+        clearAISearchLoadingState();
+        
+        // Aggregate and process results
+        const aggregatedResults = aggregateSearchResults(results, query);
+        
+        // Check if we got a credit error
+        if (aggregatedResults && aggregatedResults.creditError) {
+            clearAISearchLoadingState();
+            showPaymentOption(aggregatedResults.errorMessage);
+            return;
+        }
+        
+        if (aggregatedResults && aggregatedResults.length > 0) {
+            // Process successful results
+            const actualHighlights = performAISearch(aggregatedResults);
+            if (actualHighlights === 0) {
+                setAIEmptyResultsState();
+                setStatus('No matches found in content', 'warning');
+            } else {
+                setStatus(`Found in ${chunks.length} sections`, 'success');
+            }
+        } else {
+            setAIEmptyResultsState();
+            setStatus('No relevant content found', 'info');
+        }
+        
+    } catch (error) {
+        clearAISearchLoadingState();
+        logError('Extended search failed:', error);
+        setStatus('Extended search failed', 'error');
+    }
+}
+
+// Perform AI search on a single chunk
+async function performChunkSearch(query, chunk, chunkIndex) {
+    return new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+            action: "performAISearch",
+            query: query,
+            content: chunk.content,
+            chunkIndex: chunkIndex,
+            isExtendedSearch: true
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                logError('Chunk search error:', chrome.runtime.lastError);
+                resolve({ error: chrome.runtime.lastError.message, chunkIndex });
+            } else {
+                resolve({ ...response, chunkIndex });
+            }
+        });
+    });
+}
+
+// Aggregate results from multiple chunk searches
+function aggregateSearchResults(results, query) {
+    log('Aggregating results from', results.length, 'chunks');
+    
+    const validResults = [];
+    const errors = [];
+    const creditErrors = [];
+    
+    for (const result of results) {
+        if (result.error) {
+            errors.push(result);
+            // Check if this is a credit-related error
+            if (result.error.includes('Credits exhausted') || 
+                result.error.includes('purchase more tokens')) {
+                creditErrors.push(result);
+            }
+        } else if (result.success && result.result) {
+            // Add chunk info to results
+            const chunkResults = Array.isArray(result.result) ? result.result : [result.result];
+            for (const item of chunkResults) {
+                validResults.push({
+                    text: item,
+                    chunkIndex: result.chunkIndex,
+                    source: `chunk_${result.chunkIndex}`
+                });
+            }
+        }
+    }
+    
+    log(`Found ${validResults.length} valid results, ${errors.length} errors, ${creditErrors.length} credit errors`);
+    
+    // If we have credit errors, return them as a special error result
+    if (creditErrors.length > 0) {
+        return { 
+            creditError: true, 
+            errorMessage: creditErrors[0].error,
+            totalErrors: creditErrors.length 
+        };
+    }
+    
+    if (errors.length > 0) {
+        logError('Some chunk searches failed:', errors);
+    }
+    
+    if (validResults.length === 0) {
+        return null;
+    }
+    
+    // Sort results by relevance and remove duplicates
+    const rankedResults = rankAndDeduplicateResults(validResults, query);
+    
+    // Return top results (limit to avoid overwhelming the user)
+    return rankedResults.slice(0, 10).map(result => result.text);
+}
+
+// Rank and deduplicate results
+function rankAndDeduplicateResults(results, query) {
+    // Calculate relevance scores
+    const scoredResults = results.map(result => ({
+        ...result,
+        relevanceScore: calculateResultRelevance(result.text, query)
+    }));
+    
+    // Sort by relevance
+    scoredResults.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    
+    // Remove duplicates (similar results)
+    const uniqueResults = [];
+    for (const result of scoredResults) {
+        const isDuplicate = uniqueResults.some(existing => 
+            calculateTextSimilarity(result.text, existing.text) > 0.8
+        );
+        
+        if (!isDuplicate) {
+            uniqueResults.push(result);
+        }
+    }
+    
+    return uniqueResults;
+}
+
+// Calculate relevance score for a result
+function calculateResultRelevance(text, query) {
+    const keywords = extractKeywords(query);
+    if (keywords.length === 0) return 0.5; // Default score for non-keyword queries
+    
+    return calculateKeywordScore(text, keywords);
+}
+
+// Calculate text similarity between two strings
+function calculateTextSimilarity(text1, text2) {
+    const words1 = new Set(text1.toLowerCase().split(/\s+/));
+    const words2 = new Set(text2.toLowerCase().split(/\s+/));
+    
+    const intersection = new Set([...words1].filter(word => words2.has(word)));
+    const union = new Set([...words1, ...words2]);
+    
+    return intersection.size / union.size; // Jaccard similarity
+}
+
+// Debounced AI search - only triggers after user stops typing
+function debouncedAISearch(query) {
+    
+    // Clear any existing timeout
+    if (aiSearchTimeout) {
+        clearTimeout(aiSearchTimeout);
+    }
+    
+    // Set new timeout
+    aiSearchTimeout = setTimeout(async () => {
+        
+        // Check if this is still the current query
+        if (query !== searchInput?.value?.trim()) {
+            return;
+        }
+        
+        // Check if we still need AI search (user might have found what they wanted with keyword search)
+        if (currentHighlights.length > 0) {
+            return;
+        }
+        
+        // CRITICAL: Check authentication before attempting AI search
+        try {
+            const authCheck = await chrome.storage.local.get(['authToken', 'currentUser']);
+            const isAuthenticated = !!(authCheck.authToken && authCheck.currentUser);
+            
+            if (!isAuthenticated) {
+                showSignInPrompt("Please sign in to use AI search features. Click the SmartFind extension icon to sign in.");
+                return;
+            }
+        } catch (error) {
+            return;
+        }
+        
+        setInputStyling('ai', false);
+        await performProgressiveAISearch(query);
+        
+        aiSearchTimeout = null; // Clear the reference
+    }, 800); // Wait 800ms after user stops typing
 }

@@ -114,8 +114,19 @@ class AuthService {
                 }
             }
 
-            // Clear local state
-            await chrome.storage.local.remove(['authToken', 'currentUser']);
+            // Clear ALL user-specific data to prevent token caching across accounts
+            await chrome.storage.local.remove([
+                'authToken', 
+                'currentUser',
+                'paidTokens',
+                'aiUsageCount',
+                'userId',
+                'lastTokenSyncCount',
+                'lastSyncTime',
+                'registrationDate',
+                'lastReplenishmentDate',
+                'purchasedTokens'
+            ]);
             this.authToken = null;
             this.currentUser = null;
 

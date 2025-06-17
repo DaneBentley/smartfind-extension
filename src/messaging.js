@@ -97,6 +97,14 @@ export function setupMessageListener() {
                 handlePurchaseCompleted(request, sender, sendResponse);
                 return true;
             
+            case "contentScriptReady":
+                handleContentScriptReady(request, sender, sendResponse);
+                return true;
+            
+            case "showCreditErrorBadge":
+                handleShowCreditErrorBadge(request, sender, sendResponse);
+                return true;
+            
             default:
                 logWarning('Unknown message action:', request.action);
                 sendResponse({ success: false, error: 'Unknown action' });
@@ -164,6 +172,30 @@ async function handleOpenPopup(request, sender, sendResponse) {
 }
 
 /**
+ * Handle content script ready signal
+ */
+function handleContentScriptReady(request, sender, sendResponse) {
+    // This is just a courtesy signal from content script to establish connection
+    // Log it for debugging but don't spam the console
+    if (sender.tab) {
+        log(`Content script ready on tab ${sender.tab.id}: ${sender.tab.url}`);
+    }
+    sendResponse({ success: true, acknowledged: true });
+}
+
+/**
+ * Handle showing credit error badge
+ */
+function handleShowCreditErrorBadge(request, sender, sendResponse) {
+    const tabId = request.tabId || (sender && sender.tab ? sender.tab.id : null);
+    if (tabId) {
+        showErrorBadge(tabId, '💳', CONFIG.BADGE_DISPLAY_DURATION * 2); // Show longer for credit errors
+        log(`Showing credit error badge on tab ${tabId}`);
+    }
+    sendResponse({ success: true });
+}
+
+/**
  * Sends a message to content script with improved error handling
  * @param {number} tabId - The tab ID to send the message to
  * @param {object} message - The message to send
@@ -184,7 +216,11 @@ export async function sendMessageToContentScript(tabId, message) {
         // First ping to check if content script is ready
         chrome.tabs.sendMessage(tabId, { action: "ping" }, (response) => {
             if (chrome.runtime.lastError) {
-                logWarning('Content script not ready, attempting to inject...', chrome.runtime.lastError.message);
+                // Only log warning if it's not a common connection error
+                const error = chrome.runtime.lastError.message;
+                if (!error.includes('Could not establish connection') && !error.includes('Receiving end does not exist')) {
+                    logWarning('Content script not ready, attempting to inject...', error);
+                }
                 // Try to inject the content script if it's not loaded
                 injectContentScriptAndRetry(tabId, message);
             } else if (response && response.ready) {
@@ -192,7 +228,10 @@ export async function sendMessageToContentScript(tabId, message) {
                 // Content script is ready, send the actual message
                 chrome.tabs.sendMessage(tabId, message, (response) => {
                     if (chrome.runtime.lastError) {
-                        logError('Error sending message to ready content script:', chrome.runtime.lastError.message);
+                        const error = chrome.runtime.lastError.message;
+                        if (!error.includes('Could not establish connection') && !error.includes('Receiving end does not exist')) {
+                            logError('Error sending message to ready content script:', error);
+                        }
                     } else {
                         log('Message sent successfully to content script');
                         // Clear any error badge
@@ -200,7 +239,7 @@ export async function sendMessageToContentScript(tabId, message) {
                     }
                 });
             } else {
-                logWarning('Content script ping failed, attempting injection');
+                log('Content script ping failed, attempting injection');
                 injectContentScriptAndRetry(tabId, message);
             }
         });
@@ -234,12 +273,18 @@ async function injectContentScriptAndRetry(tabId, message) {
         setTimeout(() => {
             chrome.tabs.sendMessage(tabId, message, (response) => {
                 if (chrome.runtime.lastError) {
-                    logError('Failed to send message after injection:', chrome.runtime.lastError.message);
+                    const error = chrome.runtime.lastError.message;
+                    if (!error.includes('Could not establish connection') && !error.includes('Receiving end does not exist')) {
+                        logError('Failed to send message after injection:', error);
+                    }
                     // Try one more time with a longer delay
                     setTimeout(() => {
                         chrome.tabs.sendMessage(tabId, message, (response) => {
                             if (chrome.runtime.lastError) {
-                                logError('Final attempt failed:', chrome.runtime.lastError.message);
+                                const error = chrome.runtime.lastError.message;
+                                if (!error.includes('Could not establish connection') && !error.includes('Receiving end does not exist')) {
+                                    logError('Final attempt failed:', error);
+                                }
                             } else {
                                 log('Message sent successfully on final attempt');
                             }

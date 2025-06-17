@@ -19,11 +19,16 @@ export function handleKeywordSearch(request, sender, sendResponse) {
 export async function handleAISearch(request, sender, sendResponse) {
     log('Handling AI search for query:', request.query);
     
-    // Skip the shouldUseAI check if this is a fallback from keyword search or forced AI
-    if (!request.fallbackFromKeyword && !request.forceAI && !shouldUseAI(request.query)) {
-        log('Query classified as keyword search');
-        sendResponse({ success: true, useNativeSearch: true });
-        return;
+    // Handle extended search differently - always use AI
+    if (request.isExtendedSearch) {
+        log('Processing extended search chunk:', request.chunkIndex);
+    } else {
+        // Skip the shouldUseAI check if this is a fallback from keyword search or forced AI
+        if (!request.fallbackFromKeyword && !request.forceAI && !shouldUseAI(request.query)) {
+            log('Query classified as keyword search');
+            sendResponse({ success: true, useNativeSearch: true });
+            return;
+        }
     }
 
     const permissions = await checkUsagePermissions();
@@ -40,8 +45,20 @@ export async function handleAISearch(request, sender, sendResponse) {
     }
 
     if (!permissions.canUse) {
-        log('Free tier limit reached and no paid tokens');
-        sendResponse({ error: "Free tier limit reached. Please purchase more tokens to continue." });
+        log('User has run out of credits');
+        
+        // Show error badge on extension icon
+        if (sender && sender.tab) {
+            chrome.runtime.sendMessage({
+                action: "showCreditErrorBadge",
+                tabId: sender.tab.id
+            });
+        }
+        
+        // Provide clear, specific error message
+        const errorMessage = "Credits exhausted. Please purchase more tokens to continue using AI search.";
+            
+        sendResponse({ error: errorMessage });
         return;
     }
 
@@ -104,32 +121,37 @@ async function callCerebrasAPI(query, content) {
     }
 
     // Create a prompt that emphasizes exact extraction over summarization
-    const prompt = `You are a text extraction tool. Your job is to find and copy exact text snippets from the provided content that match the user's query. Try to decode typos and abbreviations.
+    const prompt = `You are a text extraction tool. Your ONLY job is to find and copy exact text snippets from the provided content that match the user's query.
 
 CRITICAL RULES:
-1. COPY text exactly as it appears - do NOT paraphrase, summarize, or rewrite
-2. Return the most relevant text that directly answers the query
-3. For specific data (names, emails, phones): Return short, precise answers
-4. For concepts, explanations, or summaries: Return complete sentences or paragraphs that best address the query
-5. If you find multiple relevant sections, separate them with "|||"
-6. If no exact matches exist, return "NO_MATCH_FOUND"
-7. Do NOT add your own commentary, formatting, or explanations
-8. Do NOT use markdown formatting like ** or bullets
-9. PRESERVE the original capitalization, punctuation, and spacing
+1. COPY text exactly as it appears in the content - NEVER paraphrase, summarize, or rewrite
+2. NEVER echo the user's query back to them
+3. NEVER generate your own explanations or descriptions
+4. ONLY return text that actually exists in the provided content
+5. NEVER include markup like [edit], [update], or Wikipedia formatting
+6. NEVER put quotes around your results
+7. NEVER start results with the user's query
+8. For specific data (names, emails, phones): Return short, precise answers
+9. For concepts/summaries: Find existing sentences or paragraphs that best address the query
+10. If you find multiple relevant sections, separate them with "|||"
+11. If no exact matches exist, return "NO_MATCH_FOUND"
+12. PRESERVE the original capitalization, punctuation, and spacing exactly
 
-RESPONSE LENGTH GUIDELINES:
-- For "names" or "people": Return actual person names "John Smith"
-- For "email": Return email addresses "help@company.com"
-- For "phone": Return phone numbers "(555) 123-4567"
-- For "summary", "tldr", "main point", "explanation", or concept queries: Return complete relevant text that best answers the question (can be longer)
-- For "what is", "how does", "why": Return best fit explanation (can be multiple sentences)
+WHAT TO LOOK FOR:
+- For "names" or "people": Find actual person names mentioned in the text
+- For "email": Find email addresses in the text
+- For "phone": Find phone numbers in the text
+- For "summary", "tldr", "main point", "conclusion": Find existing sentences/paragraphs that summarize or explain the main ideas
+- For "what is", "how does", "why": Find existing explanations in the text
 
-Examples of GOOD responses for comparion:
-- Query: "names" → "John Smith" ||| "Dr. Sarah Johnson" ||| "Mike Chen"
-- Query: "email" → "help@company.com"
-- Query: "phone" → "(555) 123-4567"
-- Query: "main point" "tldr" "summary" "conclusion"→ find a sentince or paragraph that sums up the content best
-- Query: "what is post-labor economy" → "The foundational premise of a post-labor economy is..."
+EXAMPLES OF CORRECT BEHAVIOR:
+- Query: "main point" → Find a sentence like "The main argument is that markets facilitate trade" (if it exists in the text)
+- Query: "summary" → Find an existing summary paragraph or concluding statement
+- Query: "names" → "John Smith" ||| "Dr. Sarah Johnson" (only if these names appear in the text)
+
+EXAMPLES OF WRONG BEHAVIOR (DO NOT DO THIS):
+- Query: "main point" → "main point" (echoing the query)
+- Query: "summary" → "The main point of the text is that..." (generating your own summary)
 
 User Query: "${query}"
 
@@ -138,7 +160,7 @@ Text Content:
 ${truncatedContent}
 ---
 
-Extract exact matching text that answers the query (separate multiple results with |||):`;
+Find and copy exact text from the content above that answers the query (separate multiple results with |||):`;
 
     const apiUrl = `${CONFIG.API_BASE_URL}/api/cerebras`;
     
@@ -195,6 +217,9 @@ Extract exact matching text that answers the query (separate multiple results wi
                 text = text.substring(1, text.length - 1);
             }
             
+            // Remove any remaining quotes around individual results
+            text = text.replace(/^"([^"]*)"$/g, '$1').replace(/^'([^']*)'$/g, '$1');
+            
             // Check for explicit no match response
             if (text === "NO_MATCH_FOUND" || text.toLowerCase().includes('no match found')) {
                 log('API explicitly returned no matches');
@@ -204,7 +229,74 @@ Extract exact matching text that answers the query (separate multiple results wi
             // Parse multiple results separated by |||
             const results = text.split('|||')
                 .map(snippet => snippet.trim())
-                .filter(snippet => snippet.length > 0 && snippet !== "NO_MATCH_FOUND" && !snippet.toLowerCase().includes('no match found'));
+                .filter(snippet => {
+                    // Clean up the snippet first
+                    snippet = snippet.trim();
+                    
+                    // Remove quotes around individual snippets
+                    if ((snippet.startsWith('"') && snippet.endsWith('"')) || 
+                        (snippet.startsWith("'") && snippet.endsWith("'"))) {
+                        snippet = snippet.substring(1, snippet.length - 1).trim();
+                    }
+                    
+                    // Filter out empty results
+                    if (snippet.length === 0) return false;
+                    
+                    // Filter out explicit no match responses
+                    if (snippet === "NO_MATCH_FOUND" || snippet.toLowerCase().includes('no match found')) return false;
+                    
+                    // Filter out results that are just echoing the query
+                    const queryLower = query.toLowerCase().trim();
+                    const snippetLower = snippet.toLowerCase().trim();
+                    if (snippetLower === queryLower) {
+                        log(`Filtering out query echo: "${snippet}"`);
+                        return false;
+                    }
+                    
+                    // Filter out results that start with the query followed by whitespace/newlines
+                    if (snippetLower.startsWith(queryLower + ' ') || 
+                        snippetLower.startsWith(queryLower + '\n') ||
+                        snippetLower.startsWith(queryLower + '\t')) {
+                        log(`Filtering out query-prefixed result: "${snippet}"`);
+                        return false;
+                    }
+                    
+                    // Filter out results that are too short to be meaningful (unless they're specific data like emails/phones)
+                    if (snippet.length < 10 && !snippet.includes('@') && !snippet.match(/\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/)) {
+                        log(`Filtering out too-short result: "${snippet}"`);
+                        return false;
+                    }
+                    
+                    // Filter out results that start with "The main point of the text is" or similar AI-generated phrases
+                    const aiGeneratedPhrases = [
+                        'the main point of the text is',
+                        'the text is about',
+                        'this text discusses',
+                        'the document explains',
+                        'the content describes',
+                        'the article states',
+                        'according to the text',
+                        'the passage mentions'
+                    ];
+                    
+                    for (const phrase of aiGeneratedPhrases) {
+                        if (snippetLower.startsWith(phrase)) {
+                            log(`Filtering out AI-generated summary: "${snippet}"`);
+                            return false;
+                        }
+                    }
+                    
+                    return true;
+                })
+                .map(snippet => {
+                    // Final cleanup: remove quotes and trim
+                    snippet = snippet.trim();
+                    if ((snippet.startsWith('"') && snippet.endsWith('"')) || 
+                        (snippet.startsWith("'") && snippet.endsWith("'"))) {
+                        snippet = snippet.substring(1, snippet.length - 1).trim();
+                    }
+                    return snippet;
+                });
             
             log(`Raw AI response: "${text}"`);
             log(`Parsed into ${results.length} result(s):`, results);
