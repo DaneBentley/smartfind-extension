@@ -1261,7 +1261,7 @@ async function performProgressiveAISearch(query) {
     log('performProgressiveAISearch: Query:', query);
     
     // Check if this requires extended search
-    const needsExtended = requiresExtendedSearch(content, query);
+    const needsExtended = requiresExtendedSearch(content, query, false); // false = not forced AI
     log('performProgressiveAISearch: Needs extended search:', needsExtended);
     
     if (needsExtended) {
@@ -3697,14 +3697,14 @@ function clearExtendedSearchPrompt() {
 }
 
 // Check if content requires extended search
-function requiresExtendedSearch(content, query) {
+function requiresExtendedSearch(content, query, isForcedAI = false) {
     // Always check content length first
     if (content.length <= CONTENT_EXTRACTION_CONFIG.extendedSearchThreshold) {
         return false;
     }
     
     // For forced AI searches (/query), don't prompt - user already committed
-    if (query.startsWith('/')) {
+    if (isForcedAI) {
         return false;
     }
     
