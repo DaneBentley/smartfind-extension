@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Replace Ctrl+F with AI-enhanced search. Ask natural questions like 'Where is contact info?' or use exact keywords. Get intelligent highlighting and instant results on any webpage.",
   "author": "Dane Bentley",
-  "homepage_url": "https://smartfind-api.vercel.app",
+  "homepage_url": "https://smartfind-extension-kozhz9ds1.vercel.app",
   "permissions": [
     "activeTab",
     "scripting",

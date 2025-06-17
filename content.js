@@ -1042,23 +1042,31 @@ function createSearchBar() {
             <div class="smartfind-settings-content">
                 <label class="smartfind-setting-item">
                     <input type="checkbox" id="setting-smart-search" checked>
-                    <span class="smartfind-setting-label">Smart Search (AI)</span>
-                    <span class="smartfind-setting-desc">Use AI for intelligent content discovery</span>
+                    <div class="smartfind-setting-text">
+                        <span class="smartfind-setting-label">Smart Search (AI)</span>
+                        <span class="smartfind-setting-desc">Use /</span>
+                    </div>
                 </label>
                 <label class="smartfind-setting-item">
                     <input type="checkbox" id="setting-case-sensitive">
-                    <span class="smartfind-setting-label">Case Sensitive</span>
-                    <span class="smartfind-setting-desc">Match exact letter case</span>
+                    <div class="smartfind-setting-text">
+                        <span class="smartfind-setting-label">Case Sensitive</span>
+                        <span class="smartfind-setting-desc">Match letter case</span>
+                    </div>
                 </label>
                 <label class="smartfind-setting-item">
                     <input type="checkbox" id="setting-multi-term" checked>
-                    <span class="smartfind-setting-label">Multi-term Search</span>
-                    <span class="smartfind-setting-desc">Enable comma-separated terms</span>
+                    <div class="smartfind-setting-text">
+                        <span class="smartfind-setting-label">Multi-term Search</span>
+                        <span class="smartfind-setting-desc">Use , to separate terms</span>
+                    </div>
                 </label>
                 <label class="smartfind-setting-item">
                     <input type="checkbox" id="setting-regex" checked>
-                    <span class="smartfind-setting-label">Regex Search</span>
-                    <span class="smartfind-setting-desc">Enable pattern matching with *</span>
+                    <div class="smartfind-setting-text">
+                        <span class="smartfind-setting-label">Regex Search</span>
+                        <span class="smartfind-setting-desc">Use *</span>
+                    </div>
                 </label>
             </div>
             <button id="smartfind-copy-results" class="smartfind-copy-btn" title="Copy all search results">

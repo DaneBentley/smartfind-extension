@@ -89,14 +89,14 @@ class PopupManager {
         document.getElementById('help-link').addEventListener('click', (e) => {
             e.preventDefault();
             chrome.tabs.create({ 
-                url: 'https://smartfind-website-do06q9tyz-danebentley2004-gmailcoms-projects.vercel.app/contact.html' 
+                url: 'https://smartfind-extension-kozhz9ds1.vercel.app/help' 
             });
         });
 
         document.getElementById('privacy-link').addEventListener('click', (e) => {
             e.preventDefault();
             chrome.tabs.create({ 
-                url: 'https://smartfind-website-do06q9tyz-danebentley2004-gmailcoms-projects.vercel.app/privacy.html' 
+                url: 'https://smartfind-extension-kozhz9ds1.vercel.app/privacy' 
             });
         });
     }
@@ -105,10 +105,10 @@ class PopupManager {
         const authenticatedView = document.getElementById('authenticated-view');
         const unauthenticatedView = document.getElementById('unauthenticated-view');
 
-        // log('updateUI called - currentUser:', this.currentUser, 'authToken:', this.authToken); // Disabled for production
+        console.log('SmartFind: updateUI called - currentUser:', this.currentUser, 'authToken:', this.authToken);
 
         if (this.currentUser && this.authToken) {
-            // log('Showing authenticated view'); // Disabled for production
+            console.log('SmartFind: Showing authenticated view');
             // Show authenticated view
             authenticatedView.classList.remove('hidden');
             unauthenticatedView.classList.add('hidden');
@@ -125,7 +125,7 @@ class PopupManager {
                 avatar.textContent = (this.currentUser.name || 'U').charAt(0).toUpperCase();
             }
         } else {
-            // log('Showing unauthenticated view'); // Disabled for production
+            console.log('SmartFind: Showing unauthenticated view');
             // Show unauthenticated view
             authenticatedView.classList.add('hidden');
             unauthenticatedView.classList.remove('hidden');
@@ -364,13 +364,13 @@ class PopupManager {
     }
 
     async handleSignOut() {
-        // log('Starting sign out process...'); // Disabled for production
+        console.log('SmartFind: Starting sign out process...');
         this.showStatus('Signing out...', 'info');
         this.setLoading(true);
 
         try {
             // Clear ALL user-specific storage to prevent token caching across accounts
-            // log('Clearing all user storage...'); // Disabled for production
+            console.log('SmartFind: Clearing all user storage...');
             await chrome.storage.local.remove([
                 'authToken', 
                 'currentUser',
@@ -386,28 +386,28 @@ class PopupManager {
             
             // Verify storage is cleared
             const storageCheck = await chrome.storage.local.get(['authToken', 'currentUser']);
-            // log('Storage after clearing:', storageCheck); // Disabled for production
+            console.log('SmartFind: Storage after clearing:', storageCheck);
             
             // Clear local state immediately
             this.currentUser = null;
             this.authToken = null;
-            // log('Local state cleared'); // Disabled for production
+            console.log('SmartFind: Local state cleared');
             
             // Send sign out message to backend (but don't wait for it)
-            // log('Sending sign out message to backend...'); // Disabled for production
+            console.log('SmartFind: Sending sign out message to backend...');
             this.sendMessage({ action: "signOut" }).catch(error => {
-                // log('Backend sign out failed (non-critical):', error); // Disabled for production
+                console.log('SmartFind: Backend sign out failed (non-critical):', error);
             });
             
             // Update UI immediately
-            // log('Updating UI...'); // Disabled for production
+            console.log('SmartFind: Updating UI...');
             await this.updateUI();
             
             // Reload stats to show anonymous view
-            // log('Reloading stats...'); // Disabled for production
+            console.log('SmartFind: Reloading stats...');
             await this.loadStats();
             
-            // log('Sign out completed successfully'); // Disabled for production
+            console.log('SmartFind: Sign out completed successfully');
             this.showStatus('Signed out successfully', 'success');
             
             // Auto-hide status after success
@@ -471,7 +471,7 @@ class PopupManager {
         this.setLoading(true);
 
         try {
-            // console.log('SmartFind Popup: Sending payment request with amount:', amount); // Disabled for production
+            console.log('SmartFind Popup: Sending payment request with amount:', amount);
             const response = await this.sendMessage({ 
                 action: "purchaseTokens",
                 amount: amount
@@ -560,14 +560,14 @@ class PopupManager {
                 // Send message to content script
                 chrome.tabs.sendMessage(tabs[0].id, { action: "signInSuccess" }, (response) => {
                     if (chrome.runtime.lastError) {
-                        // log('Could not notify content script (tab may not have SmartFind active)'); // Disabled for production
+                        console.log('SmartFind: Could not notify content script (tab may not have SmartFind active)');
                     } else {
-                        // log('Notified content script of successful sign-in'); // Disabled for production
+                        console.log('SmartFind: Notified content script of successful sign-in');
                     }
                 });
             }
         } catch (error) {
-            // log('Error notifying content script:', error); // Disabled for production
+            console.log('SmartFind: Error notifying content script:', error);
         }
     }
 }

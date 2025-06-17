@@ -94,7 +94,7 @@ When features are disabled, the extension gracefully falls back:
 - Click outside the search bar
 
 ### Testing
-Use the included `test-settings.html` file to test all functionality:
+Test all functionality directly in the browser:
 - Case sensitivity with "JavaScript" vs "javascript"
 - Multi-term search with "apple, orange"
 - Regex search with email patterns

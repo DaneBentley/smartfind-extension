@@ -181,6 +181,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Developer**: Dane Bentley  
 **Email**: danebentley2004@gmail.com  
-**Website**: [SmartFind Extension](https://smartfind-api.vercel.app)
+**Website**: [SmartFind Extension](https://smartfind-extension-kozhz9ds1.vercel.app)
 
 *Built with ❤️ for better web search experiences* 
